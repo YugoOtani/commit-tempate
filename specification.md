@@ -35,6 +35,8 @@
 | new side | 変更後のファイルと行番号 |
 | 解決済み参照 | diff内の具体的なファイルおよび行へ対応付けられた参照 |
 | 未解決参照 | diff外、パス不一致、行不一致などにより対応付けられなかった参照 |
+| 説明済み変更 | Implementation Sectionによって説明対象として対応付けられた実際の変更行またはファイル単位の変更 |
+| 未説明変更 | diffに存在する実際の変更のうち、いずれのImplementation Sectionにも説明対象として対応付けられなかったもの |
 
 ## 3. 対象範囲
 
@@ -45,6 +47,7 @@
 - レビューJSONに対する意味検証
 - diffのファイル、hunk、行番号の解析
 - Change UnitおよびReferenceとdiff行の対応付け
+- diff上の実際の変更とImplementation Sectionの照合、および未説明変更の検出
 - 全体サマリー、Change Unit、ファイル別diffを含むHTML生成
 - 追加、変更、削除、rename、copy、mode変更、バイナリ変更、submodule変更の表示
 - 未解決参照および解析警告の表示
@@ -237,19 +240,7 @@ git diff --no-ext-diff --no-textconv --find-renames BASE...HEAD |
 - 主要な文字列は空文字列でないこと
 - `human_review_required`が`true`の場合、`human_review_focus`が存在すること
 
-### 6.2 行のside
-
-`implementation_section`および行番号を持つ`reference`には、次の任意プロパティを追加する。
-
-```json
-{
-  "line_side": "new"
-}
-```
-
-値は`old`または`new`とする。省略時は後方互換のため`new`として扱う。
-
-### 6.3 意味検証
+### 6.2 意味検証
 
 JSON Schema検証後、アプリケーションは次を検証する。
 
@@ -300,6 +291,8 @@ diff中に対象パスや行が存在するかどうかは入力自体の不正�
 - new側行番号。存在しない場合はnull
 - HTMLアンカーID
 - 対応するChange UnitおよびReferenceの一覧
+- 説明対象として対応付けられたImplementation Sectionの一覧
+- 未説明変更であるかを示すフラグ
 
 ## 8. パスと行の対応付け
 
@@ -320,16 +313,18 @@ diff中に対象パスや行が存在するかどうかは入力自体の不正�
 行参照は次の組で識別する。
 
 ```text
-(normalized path, line_side, line number)
+(normalized path, line number)
 ```
+
+diff側ではold側とnew側の行番号を保持するが、レビューJSONではsideを指定しない。JSONのpathと行番号を、対応するold pathとold側行番号、およびnew pathとnew側行番号の両方に対して検索する。同じ位置指定が両側に一致する場合は、該当するすべてのdiff行へ対応付ける。
 
 ### 8.3 パスの選択
 
-- `new` sideではnew pathを使用する。
-- `old` sideではold pathを使用する。
-- renameまたはcopyではold pathとnew pathを別々に検索可能とする。
-- 追加ファイルにold sideの行は存在しない。
-- 削除ファイルにnew sideの行は存在しない。
+- JSONのpathがnew pathと一致する場合、new側の行番号を検索する。
+- JSONのpathがold pathと一致する場合、old側の行番号を検索する。
+- old pathとnew pathが同じ場合は、old側とnew側の両方を検索する。
+- renameまたはcopyでは、JSONにold pathを指定すればold側、new pathを指定すればnew側を検索する。
+- 追加ファイルにはold側の行、削除ファイルにはnew側の行が存在しないため、存在する側だけを検索する。
 
 ### 8.4 行範囲
 
@@ -349,9 +344,57 @@ diff中に対象パスや行が存在するかどうかは入力自体の不正�
 | `partially_resolved` | 指定範囲の一部だけを対応付けた |
 | `file_only` | ファイルは存在するが行が指定されていない、または行がdiff外 |
 | `not_in_diff` | 指定パスがdiffに含まれない |
-| `invalid_location` | sideと変更種別の組み合わせなどが不正 |
 
 HTMLでは未解決状態を隠さず、理由を表示する。
+
+### 8.6 変更説明の網羅性検査
+
+diff上の実際の変更と、レビューJSONの`change_units[].implementation.sections`を照合し、説明が対応付けられていない変更を検出する。この検査はReferenceの解決状態の検査とは独立して行う。
+
+#### 8.6.1 検査対象
+
+実際の変更として、次を検査対象とする。
+
+- テキストdiffの`addition`行
+- テキストdiffの`deletion`行
+- 行を持たないrename、copy、mode変更、バイナリ変更
+- 行を持たない形式で表現されたsubmodule変更
+
+`context`行および`No newline at end of file`マーカーは、それ自体を変更として扱わない。追加行はnew side、削除行はold sideの変更として別々に検査する。
+
+#### 8.6.2 テキスト変更の説明判定
+
+テキストdiffの変更行は、次のすべてを満たすImplementation Sectionが1件以上存在する場合に説明済みとする。
+
+- 正規化後の`path`が、対象行のsideに対応するdiff pathと一致する。
+- `start_line`および`end_line`で示す範囲が対象行を含む。`end_line`省略時は`start_line`の1行だけを対象とする。
+- Implementation Sectionが対象行へ解決されている。
+
+Implementation Sectionの範囲にcontext行が含まれてもよいが、網羅性の計算ではその範囲内の`addition`行または`deletion`行だけを説明済みとして数える。行番号を持たないImplementation Sectionはテキスト変更行を説明済みにはしない。
+
+追加行と削除行は別々の変更行として判定する。ただし、old pathとnew pathが同じで、同じImplementation Sectionの行範囲が両側の変更行に一致する場合、そのImplementation Sectionで追加行と削除行の両方を説明済みにできる。
+
+Reference、Change Unitのタイトル、`implementation.summary`、`implementation.description`、`review`内の文章は、具体的な変更位置を特定できないため、変更行を説明済みとする根拠には使用しない。
+
+#### 8.6.3 行を持たない変更の説明判定
+
+行を持たない変更は、正規化後の`path`が対象ファイルのold pathまたはnew pathと一致し、かつ行番号を持たないImplementation Sectionが1件以上存在する場合に説明済みとする。renameまたはcopyではold pathとnew pathのどちらを指定してもよい。
+
+同じファイルに複数種類の行を持たない変更がある場合、一致する1件のImplementation Sectionでそれらをまとめて説明済みとしてよい。テキスト変更も併存する場合、そのImplementation Sectionは行を持たない変更だけを説明し、テキスト変更行は別途行範囲を持つImplementation Sectionで説明しなければならない。
+
+#### 8.6.4 未説明箇所の集約
+
+説明されていないテキスト変更行は、同じファイル、side、hunk内で行番号が連続する範囲ごとに1件の警告へ集約する。行を持たない未説明変更は、同じファイルに属する変更種別をまとめて1件の警告としてよい。
+
+各警告は、少なくとも次の位置情報を持つ。
+
+- 正規化後のpath
+- `old`または`new`のside
+- テキスト変更では開始行と終了行
+- 行を持たない変更では変更種別
+- HTML内の該当diff箇所を示すアンカー。該当行を表示できない変更ではファイルのアンカー
+
+警告の順序はdiffのファイル順、hunk順、行順とし、同じ入力から決定的に生成する。
 
 ## 9. HTMLレポート仕様
 
@@ -399,6 +442,7 @@ HTMLは次の順序で構成する。
 - リスク別Change Unit数
 - `human_review_required`の件数
 - 未解決参照数
+- 未説明変更箇所数
 - バイナリ変更数
 
 ### 9.5 レビュー優先順位
@@ -489,9 +533,14 @@ Referenceはtype別のラベルを表示する。
 - hunk外の行参照
 - 一部だけ解決された範囲
 - binaryファイルに対する行参照
-- rename前後のside不一致
+- Implementation Sectionによる説明がない変更行
+- Implementation Sectionによる説明がない、行を持たないファイル変更
 - parserが保持した未知のextended header
 - 入力サイズが警告閾値を超えた場合
+
+未説明変更の警告には、警告コードとともにpath、side、行範囲または変更種別を表示する。テキスト変更では対象範囲のdiffを警告欄内に表示し、同じ内容をファイル別diffにも表示する。警告欄からファイル別diffの該当行または該当ファイルへ移動できるリンクを付け、ファイル別diff側にも未説明であることが分かるマーカーを表示する。
+
+標準エラーへ出力する未説明変更の警告にも、`path:開始行-終了行 (side)`または`path (side, 変更種別)`の形式で該当箇所を含める。コード本文は標準エラーへ出力しなくてよい。
 
 ### 9.11 監査情報
 
@@ -579,6 +628,8 @@ MVPではJavaScriptを使用しない。将来追加する場合は、固定さ�
 - binaryファイルのため行表示できない。
 - 任意メタデータが不足している。
 - 解釈に影響しない未知のdiffメタデータがある。
+- diff上の変更行が、いずれのImplementation Sectionによっても説明されていない。
+- 行を持たないファイル変更が、いずれのImplementation Sectionによっても説明されていない。
 
 警告には機械的に識別可能なコードを付ける。
 
@@ -588,7 +639,11 @@ W_LINE_OUTSIDE_HUNKS
 W_LOCATION_PARTIALLY_RESOLVED
 W_BINARY_LOCATION_UNRESOLVED
 W_UNKNOWN_DIFF_HEADER
+W_UNEXPLAINED_DIFF_LINES
+W_UNEXPLAINED_FILE_CHANGE
 ```
+
+未説明変更はレビューの不足を人間へ通知する警告であり、それだけを理由にHTML生成を失敗させない。`--strict-links`は参照の解決可否だけを対象とし、未説明変更には適用しない。
 
 ## 12. 非機能要件
 
@@ -658,6 +713,7 @@ src/
     line-index.ts
   correlate/
     resolve-locations.ts
+    detect-unexplained-changes.ts
   render/
     render-html.ts
     escape.ts
@@ -691,7 +747,6 @@ tests/
 - `end_line < start_line`を検出する。
 - 絶対パスを拒否する。
 - リポジトリ外へ出る`..`を拒否する。
-- old/new sideの値を検証する。
 
 ### 14.3 diff解析テスト
 
@@ -722,6 +777,15 @@ tests/
 - 一部だけhunkに含まれる範囲
 - diff外のReference
 - binaryファイルへの行参照
+- new sideの変更行がImplementation Sectionによって説明済みになること
+- old sideの変更行がImplementation Sectionによって説明済みになること
+- 同じpathと行範囲がold側とnew側の両方に一致する場合、両側の変更行が説明済みになること
+- renameまたはcopyでold pathとnew pathを正しい側へ対応付けること
+- 行番号を持たないImplementation Sectionがテキスト変更行を説明済みにしないこと
+- rename、copy、mode変更、バイナリ変更をファイル単位で照合すること
+- 未解決または一部解決のImplementation Sectionでは、実際に解決した変更行だけを説明済みにすること
+- Referenceだけが対応付けられた変更行を未説明として検出すること
+- 連続する未説明行を同じfile、side、hunk内で集約すること
 
 ### 14.5 HTMLおよびセキュリティテスト
 
@@ -733,6 +797,9 @@ tests/
 - すべての内部リンクにリンク先が存在する。
 - CSPが含まれる。
 - 外部リソース参照が存在しない。
+- 未説明変更の警告にpath、side、行範囲または変更種別が表示される。
+- 未説明変更の警告からファイル別diffの該当箇所へ移動できる。
+- ファイル別diffの該当箇所に未説明マーカーが表示される。
 - スナップショットHTMLが期待する構造を持つ。
 
 ### 14.6 CLI統合テスト
@@ -741,6 +808,8 @@ tests/
 - 標準入力からdiffを受け取れる。
 - HTMLを標準出力へ出せる。
 - 診断メッセージが標準エラーへ出る。
+- 未説明変更がある場合もHTMLを生成し、終了コード`0`を返す。
+- 未説明変更の警告コードと該当箇所が標準エラーへ出る。
 - エラー種別ごとに所定の終了コードを返す。
 - 出力失敗時に正常終了しない。
 
@@ -754,10 +823,11 @@ tests/
 4. diff行から関連するChange Unitを確認できる。
 5. 人間確認が必要なChange Unitと確認観点がレポート上部から把握できる。
 6. 未解決参照と理由がHTMLおよび標準エラーから確認できる。
-7. 不正JSON、不正schema、非対応diffを正常結果として扱わない。
-8. 入力に含まれるHTMLやscriptを実行しない。
-9. HTMLをネットワーク接続なしで閲覧および印刷できる。
-10. 主要なparser、対応付け、セキュリティ、CLIテストが自動化されている。
+7. Implementation Sectionで説明されていない変更を警告し、そのpath、side、行範囲または変更種別をHTMLおよび標準エラーから確認でき、該当diffをHTMLから確認できる。
+8. 不正JSON、不正schema、非対応diffを正常結果として扱わない。
+9. 入力に含まれるHTMLやscriptを実行しない。
+10. HTMLをネットワーク接続なしで閲覧および印刷できる。
+11. 主要なparser、対応付け、セキュリティ、CLIテストが自動化されている。
 
 ## 16. 将来拡張
 
