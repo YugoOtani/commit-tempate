@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>案C レビューワークベンチ — AI Change Review</title>
+  <style>
+    :root { color-scheme:light; --ink:#20242c; --muted:#6b7280; --line:#dcdfe5; --paper:#fff; --bg:#f2f3f5; --black:#1f232b; --yellow:#f0b429; --blue:#1768cf; --blue-soft:#e8f2ff; --orange:#ac4816; --orange-soft:#fff0e7; --violet:#674bb5; --violet-soft:#f1edff; --add:#e9f8ef; --del:#fff0f1; --code:#fbfbfc; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.5; }
+    a { color:inherit; }
+    a:focus-visible, label:focus-within { outline:3px solid #ffb000; outline-offset:3px; }
+    .topbar { color:#fff; background:#181b21; }
+    .topbar-inner { width:min(1500px,calc(100% - 32px)); min-height:58px; margin:auto; display:flex; justify-content:space-between; align-items:center; gap:24px; }
+    .brand { font-weight:850; letter-spacing:-.02em; }
+    .proposal-nav { display:flex; gap:6px; }
+    .proposal-nav a { padding:7px 10px; color:#c9ced8; border-radius:7px; font-size:.76rem; font-weight:750; text-decoration:none; }
+    .proposal-nav a[aria-current="page"] { color:#20242c; background:#fff; }
+    .masthead { color:#fff; border-top:1px solid #30353f; background:var(--black); }
+    .masthead-inner, main { width:min(1500px,calc(100% - 32px)); margin:auto; }
+    .masthead-inner { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:36px; align-items:end; padding:28px 0 30px; }
+    .kicker { margin:0 0 7px; color:#f4c95b; font-size:.69rem; font-weight:900; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { margin:0; font-size:clamp(1.8rem,3.4vw,3rem); line-height:1.08; letter-spacing:-.04em; }
+    .metrics { display:flex; gap:25px; }
+    .metric b,.metric span { display:block; }
+    .metric b { font-size:1.25rem; }
+    .metric span { color:#aeb6c5; font-size:.65rem; }
+    main { padding:22px 0 70px; }
+    .toolbar { display:flex; justify-content:space-between; align-items:center; gap:24px; margin-bottom:14px; padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+    .toolbar-title strong,.toolbar-title span { display:block; }
+    .toolbar-title strong { font-size:.82rem; }
+    .toolbar-title span { margin-top:2px; color:var(--muted); font-size:.71rem; }
+    .radio { position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); }
+    .filters { display:flex; gap:5px; padding:4px; border-radius:9px; background:#eceef1; }
+    .filter { padding:7px 10px; border-radius:6px; color:#5e6571; font-size:.7rem; font-weight:850; cursor:pointer; white-space:nowrap; }
+    #focus-all:checked ~ .toolbar label[for="focus-all"], #focus-cu1:checked ~ .toolbar label[for="focus-cu1"], #focus-cu2:checked ~ .toolbar label[for="focus-cu2"], #focus-cu3:checked ~ .toolbar label[for="focus-cu3"] { color:#fff; background:#282d36; box-shadow:0 2px 6px rgba(0,0,0,.16); }
+    .workbench { display:grid; grid-template-columns:225px minmax(0,1fr); gap:14px; align-items:start; }
+    .navigator { position:sticky; top:14px; overflow:hidden; border:1px solid var(--line); border-radius:11px; background:#fff; }
+    .nav-head { padding:13px 14px; border-bottom:1px solid var(--line); font-size:.71rem; font-weight:900; letter-spacing:.07em; text-transform:uppercase; }
+    .file { padding:13px 12px 7px; color:#4c5360; font:800 .7rem/1.35 ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere; }
+    .nav-link { display:grid; grid-template-columns:24px minmax(0,1fr); gap:8px; padding:8px 12px; color:#555e6b; font-size:.72rem; text-decoration:none; }
+    .nav-link:hover { background:#f3f4f6; }
+    .nav-link b { width:22px; height:22px; display:grid; place-items:center; border:1px solid #cfd4db; border-radius:5px; font-size:.62rem; }
+    .nav-link span { align-self:center; }
+    .legend { display:grid; gap:7px; margin:10px 12px 13px; padding-top:12px; border-top:1px solid var(--line); }
+    .legend span { display:flex; align-items:center; gap:7px; color:#5f6671; font-size:.68rem; }
+    .legend i { width:9px; height:9px; border-radius:2px; background:currentColor; }
+    .review-list { display:grid; gap:14px; min-width:0; }
+    .review-row { scroll-margin-top:14px; overflow:hidden; border:1px solid var(--line); border-radius:11px; background:#fff; box-shadow:0 7px 18px rgba(31,35,43,.045); }
+    .row-head { display:flex; justify-content:space-between; gap:18px; align-items:center; padding:11px 14px; border-bottom:1px solid var(--line); }
+    .row-head strong { font-size:.84rem; }
+    .row-head .path { margin-left:9px; color:var(--muted); font: .67rem/1.4 ui-monospace,SFMono-Regular,Consolas,monospace; }
+    .coverage { color:#176548; font-size:.69rem; font-weight:850; white-space:nowrap; }
+    .row-body { display:grid; grid-template-columns:minmax(550px,1fr) 350px; align-items:stretch; }
+    .diff-scroll { min-width:0; overflow:auto; border-right:1px solid var(--line); background:var(--code); }
+    .hunk { min-width:680px; padding:10px 0 13px; color:#313743; font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace; }
+    .hunk-title { padding:2px 14px 7px; color:#70798a; }
+    .line { display:grid; grid-template-columns:43px 43px 20px minmax(max-content,1fr) auto; min-height:22px; }
+    .line > span { padding:1px 7px; }
+    .ln { color:#929baa; text-align:right; border-right:1px solid #e3e6eb; user-select:none; }
+    .sign { text-align:center; user-select:none; }
+    .code { white-space:pre; }
+    .line.add { background:var(--add); }
+    .line.del { background:var(--del); }
+    .pins { position:sticky; right:0; display:flex; align-self:center; gap:3px; padding-right:7px !important; }
+    .pin { min-width:22px; padding:1px 4px; color:#fff; border-radius:3px; font:900 9px/1.4 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; text-align:center; }
+    .caption-rail { display:flex; flex-direction:column; gap:8px; padding:10px; background:#f6f7f9; }
+    .caption { position:relative; padding:12px 12px 12px 15px; color:var(--ink); border:1px solid var(--line); border-radius:8px; background:#fff; }
+    .caption::before { content:""; position:absolute; top:0; bottom:0; left:0; width:4px; border-radius:8px 0 0 8px; background:currentColor; }
+    .caption-head { display:flex; justify-content:space-between; gap:10px; align-items:center; }
+    .unit { font-size:.66rem; font-weight:900; }
+    .type { color:#858c97; font-size:.62rem; }
+    .caption h3 { margin:6px 0 3px; color:var(--ink); font-size:.82rem; }
+    .caption p { margin:0; color:#616976; font-size:.73rem; }
+    .human { margin-top:8px; padding:7px 8px; color:#70500f; border:1px solid #ead390; border-radius:6px; background:#fff9e9; font-size:.68rem; }
+    .cu1 { color:var(--blue); }
+    .cu2 { color:var(--orange); }
+    .cu3 { color:var(--violet); }
+    .pin.cu1 { background:var(--blue); }
+    .pin.cu2 { background:var(--orange); }
+    .pin.cu3 { background:var(--violet); }
+    #focus-cu1:checked ~ .workbench .review-row:not(.has-cu1), #focus-cu2:checked ~ .workbench .review-row:not(.has-cu2), #focus-cu3:checked ~ .workbench .review-row:not(.has-cu3) { display:none; }
+    #focus-cu1:checked ~ .workbench .caption:not(.cu1), #focus-cu2:checked ~ .workbench .caption:not(.cu2), #focus-cu3:checked ~ .workbench .caption:not(.cu3) { display:none; }
+    #focus-cu1:checked ~ .workbench .pin:not(.cu1), #focus-cu2:checked ~ .workbench .pin:not(.cu2), #focus-cu3:checked ~ .workbench .pin:not(.cu3) { opacity:.18; }
+    .assessment { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px; }
+    .assessment div { padding:14px; border:1px solid var(--line); border-radius:9px; background:#fff; }
+    .assessment strong { display:block; font-size:.76rem; }
+    .assessment p { margin:4px 0 0; color:var(--muted); font-size:.73rem; }
+    @media (max-width:1050px) { .workbench { grid-template-columns:1fr; } .navigator { position:static; } .navigator .file,.navigator .nav-link { display:none; } .legend { display:flex; flex-wrap:wrap; margin-top:0; border-top:0; } .row-body { grid-template-columns:1fr; } .diff-scroll { border-right:0; border-bottom:1px solid var(--line); } .caption-rail { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media (max-width:720px) { .topbar-inner,.masthead-inner,main { width:min(100% - 24px,1500px); } .proposal-nav a:not([aria-current="page"]) { display:none; } .masthead-inner { grid-template-columns:1fr; } .metrics { justify-content:space-between; } .toolbar { align-items:flex-start; flex-direction:column; } .filters { width:100%; overflow:auto; } .caption-rail,.assessment { grid-template-columns:1fr; } .row-head { align-items:flex-start; flex-direction:column; gap:4px; } .row-head .path { display:block; margin:3px 0 0; } }
+    @media print { body { background:#fff; font-size:10pt; } .topbar,.toolbar,.navigator { display:none; } .masthead { color:#111; background:#fff; border-bottom:2px solid #111; } .metric span { color:#333; } .workbench { display:block; } .review-row { display:block !important; box-shadow:none; break-inside:avoid; } .caption { display:block !important; } .row-body { grid-template-columns:1fr; } .diff-scroll { border-right:0; } }
+  </style>
+</head>
+<body>
+  <header class="topbar"><div class="topbar-inner"><div class="brand">AI Change Review · UI Lab</div><nav class="proposal-nav" aria-label="UI案の切り替え"><a href="index.html">現行案</a><a href="source-location-a.html">案A</a><a href="source-location-b.html">案B</a><a href="source-location-c.html" aria-current="page">案C</a></nav></div></header>
+  <div class="masthead"><div class="masthead-inner"><div><p class="kicker">Pattern C · Review workbench</p><h1>diffを流し読みし、<br>必要なUnitだけ絞り込む</h1></div><div class="metrics" aria-label="変更の集計"><div class="metric"><b>3</b><span>変更箇所</span></div><div class="metric"><b>3</b><span>Change Units</span></div><div class="metric"><b>100%</b><span>説明カバー率</span></div></div></div></div>
+
+  <main>
+    <input class="radio" type="radio" name="focus" id="focus-all" checked>
+    <input class="radio" type="radio" name="focus" id="focus-cu1">
+    <input class="radio" type="radio" name="focus" id="focus-cu2">
+    <input class="radio" type="radio" name="focus" id="focus-cu3">
+
+    <section class="toolbar" aria-label="Change Unitフィルター">
+      <div class="toolbar-title"><strong>表示する説明を絞り込む</strong><span>コード上の変更箇所はUnitをまたいで表示されます</span></div>
+      <div class="filters"><label class="filter" for="focus-all">すべて</label><label class="filter" for="focus-cu1">CU-001 時刻依存</label><label class="filter" for="focus-cu2">CU-002 期限境界</label><label class="filter" for="focus-cu3">CU-003 テスト</label></div>
+    </section>
+
+    <div class="workbench">
+      <nav class="navigator" aria-label="変更箇所ナビゲーション">
+        <div class="nav-head">Source locations</div>
+        <div class="file">src/review.rs</div>
+        <a class="nav-link" href="#location-1"><b>01</b><span>基準日の入力</span></a>
+        <a class="nav-link" href="#location-2"><b>02</b><span>期限判定</span></a>
+        <div class="file">tests/review.rs</div>
+        <a class="nav-link" href="#location-3"><b>03</b><span>境界値テスト</span></a>
+        <div class="legend" aria-label="Change Unitの凡例"><span class="cu1"><i></i>CU-001 時刻依存</span><span class="cu2"><i></i>CU-002 期限境界</span><span class="cu3"><i></i>CU-003 テスト</span></div>
+      </nav>
+
+      <section class="review-list" aria-label="ソースコード上の変更箇所">
+        <article class="review-row has-cu1" id="location-1">
+          <header class="row-head"><div><strong>01 · 基準日をメソッドの入力にする</strong><span class="path">crates/learning-core/src/review.rs · L39 → L42</span></div><span class="coverage">1 Unit · 説明済み</span></header>
+          <div class="row-body">
+            <div class="diff-scroll"><div class="hunk"><div class="hunk-title">@@ -38,5 +38,8 @@ impl ReviewSchedule {</div><div class="line"><span class="ln">38</span><span class="ln">38</span><span class="sign"> </span><span class="code">impl ReviewSchedule {</span><span></span></div><div class="line del"><span class="ln">39</span><span class="ln"></span><span class="sign">−</span><span class="code">    pub fn is_due(&amp;self) -&gt; bool {</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">42</span><span class="sign">+</span><span class="code">    pub fn is_due(&amp;self, today: LocalDate) -&gt; bool {</span><span class="pins"><span class="pin cu1">01</span></span></div><div class="line"><span class="ln">41</span><span class="ln">44</span><span class="sign"> </span><span class="code">    }</span><span></span></div></div></div>
+            <aside class="caption-rail"><div class="caption cu1"><div class="caption-head"><span class="unit">CU-001 · 時刻依存の分離</span><span class="type">AI説明</span></div><h3>現在日を外部入力へ</h3><p>domain内部の時計への依存を除き、判定を決定的にします。</p><div class="human">確認: 呼び出し側でユーザーのtimezoneを反映すること。</div></div></aside>
+          </div>
+        </article>
+
+        <article class="review-row has-cu1 has-cu2" id="location-2">
+          <header class="row-head"><div><strong>02 · 今日を含めて復習対象と判定する</strong><span class="path">crates/learning-core/src/review.rs · L42–44</span></div><span class="coverage">2 Units · 説明済み</span></header>
+          <div class="row-body">
+            <div class="diff-scroll"><div class="hunk"><div class="hunk-title">@@ -42,3 +42,4 @@ pub fn is_due</div><div class="line"><span class="ln"></span><span class="ln">42</span><span class="sign"> </span><span class="code">    pub fn is_due(&amp;self, today: LocalDate) -&gt; bool {</span><span class="pins"><span class="pin cu1">01</span></span></div><div class="line add"><span class="ln"></span><span class="ln">43</span><span class="sign">+</span><span class="code">        self.due_date &lt;= today</span><span class="pins"><span class="pin cu2">02</span></span></div><div class="line"><span class="ln"></span><span class="ln">44</span><span class="sign"> </span><span class="code">    }</span><span></span></div></div></div>
+            <aside class="caption-rail"><div class="caption cu1"><div class="caption-head"><span class="unit">CU-001 · 時刻依存の分離</span><span class="type">関連説明</span></div><h3>入力値を判定へ接続</h3><p>引数のtodayが比較の基準として使われています。</p></div><div class="caption cu2"><div class="caption-head"><span class="unit">CU-002 · 期限境界</span><span class="type">AI説明</span></div><h3>包含境界を直接表現</h3><p><code>&lt;=</code> により、今日を含めて未来日のみ除外します。</p><div class="human">確認: 仕様の「今日以前」が包含境界であること。</div></div></aside>
+          </div>
+        </article>
+
+        <article class="review-row has-cu2 has-cu3" id="location-3">
+          <header class="row-head"><div><strong>03 · 過去・今日・未来の境界をテストする</strong><span class="path">crates/learning-core/tests/review.rs · L68–96</span></div><span class="coverage">2 Units · 説明済み</span></header>
+          <div class="row-body">
+            <div class="diff-scroll"><div class="hunk"><div class="hunk-title">@@ -64,4 +68,28 @@ mod tests {</div><div class="line add"><span class="ln"></span><span class="ln">68</span><span class="sign">+</span><span class="code">    #[test]</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">69</span><span class="sign">+</span><span class="code">    fn due_today_is_ready_for_review() {</span><span class="pins"><span class="pin cu3">03</span></span></div><div class="line add"><span class="ln"></span><span class="ln">70</span><span class="sign">+</span><span class="code">        let today = LocalDate::from_ymd(2026, 9, 22);</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">71</span><span class="sign">+</span><span class="code">        assert!(schedule(today).is_due(today));</span><span class="pins"><span class="pin cu2">02</span><span class="pin cu3">03</span></span></div><div class="line add"><span class="ln"></span><span class="ln">74</span><span class="sign">+</span><span class="code">    // past: true / future: false</span><span class="pins"><span class="pin cu3">03</span></span></div></div></div>
+            <aside class="caption-rail"><div class="caption cu2"><div class="caption-head"><span class="unit">CU-002 · 期限境界</span><span class="type">仕様との対応</span></div><h3>今日の期待値を固定</h3><p>同日がtrueになることをテストで保証します。</p></div><div class="caption cu3"><div class="caption-head"><span class="unit">CU-003 · 境界値テスト</span><span class="type">AI説明</span></div><h3>比較の両側を保護</h3><p>過去・今日・未来の3分類で境界の退行を検知します。</p></div></aside>
+          </div>
+        </article>
+      </section>
+    </div>
+
+    <section class="assessment" aria-label="案Cの評価観点"><div><strong>長所</strong><p>diff全体の連続性を保ったまま、Unit別の観点にもすぐ切り替えられます。</p></div><div><strong>注意点</strong><p>3カラムの情報密度が高く、狭い画面ではキャプションがコード下へ移動します。</p></div><div><strong>推奨規模</strong><p>変更箇所が多い中〜大規模PR。抜け漏れ確認や横断レビューに適します。</p></div></section>
+  </main>
+</body>
+</html>

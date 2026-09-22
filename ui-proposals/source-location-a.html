@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>案A ファイルタブ — AI Change Review</title>
+  <style>
+    :root { color-scheme:light; --ink:#172033; --muted:#657086; --line:#dce1e9; --paper:#fff; --bg:#f5f6f8; --navy:#121c31; --blue:#1769e0; --blue-soft:#eaf2ff; --orange:#b44b16; --orange-soft:#fff0e8; --violet:#7157c8; --violet-soft:#f1edff; --add:#eaf8f0; --del:#fff0f1; --code:#fbfcfe; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.5; }
+    a { color:inherit; }
+    a:focus-visible, label:focus-within { outline:3px solid #ffb000; outline-offset:3px; }
+    .topbar { color:#fff; background:var(--navy); }
+    .topbar-inner { width:min(1320px,calc(100% - 36px)); margin:auto; display:flex; align-items:center; justify-content:space-between; gap:24px; min-height:58px; }
+    .brand { font-weight:850; letter-spacing:-.02em; }
+    .proposal-nav { display:flex; align-items:center; gap:6px; }
+    .proposal-nav a { padding:7px 10px; border-radius:7px; color:#cad5e7; font-size:.76rem; font-weight:750; text-decoration:none; }
+    .proposal-nav a[aria-current="page"] { color:#14213a; background:#fff; }
+    .hero { color:#fff; background:linear-gradient(125deg,#16223a 0%,#22395f 68%,#174f87 100%); }
+    .hero-inner, main { width:min(1320px,calc(100% - 36px)); margin:auto; }
+    .hero-inner { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,.7fr); gap:48px; align-items:end; padding:42px 0 46px; }
+    .kicker { margin:0 0 9px; color:#9fc8ff; font-size:.71rem; font-weight:850; letter-spacing:.13em; text-transform:uppercase; }
+    h1 { margin:0; font-size:clamp(2rem,4vw,3.35rem); line-height:1.05; letter-spacing:-.045em; }
+    .hero p { margin:12px 0 0; color:#d8e2f2; }
+    .hero-note { padding:17px 19px; border:1px solid rgba(255,255,255,.2); border-radius:12px; background:rgba(255,255,255,.08); }
+    .hero-note strong { display:block; margin-bottom:5px; font-size:.8rem; }
+    .hero-note span { color:#d8e2f2; font-size:.84rem; }
+    main { padding:28px 0 72px; }
+    .context { display:flex; justify-content:space-between; gap:24px; align-items:center; padding:18px 20px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+    .context strong { display:block; }
+    .context p { margin:4px 0 0; color:var(--muted); font-size:.84rem; }
+    .legend { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+    .chip { display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border:1px solid currentColor; border-radius:99px; font-size:.68rem; font-weight:850; white-space:nowrap; }
+    .chip::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor; }
+    .cu1 { color:#125bc0; background:var(--blue-soft); }
+    .cu2 { color:#9d3f12; background:var(--orange-soft); }
+    .cu3 { color:#5d45aa; background:var(--violet-soft); }
+    .file-tabs { margin-top:20px; }
+    .radio { position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); }
+    .tablist { display:flex; gap:4px; overflow:auto; padding:0 12px; border-bottom:1px solid var(--line); }
+    .tab { flex:none; position:relative; padding:14px 16px 13px; color:var(--muted); border-radius:9px 9px 0 0; font:750 .78rem/1.3 ui-monospace,SFMono-Regular,Consolas,monospace; cursor:pointer; }
+    .tab small { margin-left:8px; padding:2px 6px; color:#657086; border-radius:99px; background:#e9edf3; font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    #tab-core:checked ~ .tablist label[for="tab-core"], #tab-tests:checked ~ .tablist label[for="tab-tests"] { color:var(--blue); background:#fff; }
+    #tab-core:checked ~ .tablist label[for="tab-core"]::after, #tab-tests:checked ~ .tablist label[for="tab-tests"]::after { content:""; position:absolute; right:12px; bottom:-1px; left:12px; height:3px; background:var(--blue); }
+    .panel { display:none; padding:20px; border:1px solid var(--line); border-top:0; border-radius:0 0 14px 14px; background:#fff; box-shadow:0 12px 28px rgba(22,35,60,.06); }
+    #tab-core:checked ~ .panels .panel-core, #tab-tests:checked ~ .panels .panel-tests { display:block; }
+    .panel-head { display:flex; justify-content:space-between; gap:20px; align-items:end; margin-bottom:14px; }
+    .panel-head h2 { margin:0; font-size:1.02rem; }
+    .panel-head p { margin:4px 0 0; color:var(--muted); font-size:.78rem; }
+    .coverage { color:#176648; font-size:.75rem; font-weight:800; }
+    .location-list { display:grid; gap:18px; }
+    .location { overflow:hidden; border:1px solid var(--line); border-radius:12px; background:var(--paper); }
+    .location-head { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:12px 15px; border-bottom:1px solid var(--line); background:#f8fafc; }
+    .location-head strong { font-size:.88rem; }
+    .location-head span { color:var(--muted); font: .72rem/1.4 ui-monospace,SFMono-Regular,Consolas,monospace; }
+    .diff-scroll { overflow:auto; background:var(--code); }
+    .hunk { min-width:790px; padding:9px 0 12px; color:#2d384d; font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace; }
+    .hunk-title { padding:3px 14px 7px; color:#62708a; }
+    .line { display:grid; grid-template-columns:46px 46px 22px minmax(max-content,1fr) auto; min-height:22px; }
+    .line > span { padding:1px 8px; }
+    .ln { color:#8a95a7; text-align:right; border-right:1px solid #e5e9ef; user-select:none; }
+    .sign { text-align:center; user-select:none; }
+    .code { white-space:pre; }
+    .line.add { background:var(--add); }
+    .line.del { background:var(--del); }
+    .pins { position:sticky; right:0; display:flex; align-self:center; gap:4px; padding-right:8px !important; }
+    .pin { min-width:23px; padding:1px 5px; border:1px solid currentColor; border-radius:4px; font:850 9px/1.4 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; text-align:center; }
+    .captions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding:12px; border-top:1px solid var(--line); background:#f7f8fb; }
+    .caption { position:relative; min-width:0; padding:13px 14px 13px 18px; border:1px solid var(--line); border-radius:9px; background:#fff; }
+    .caption::before { content:""; position:absolute; top:0; bottom:0; left:0; width:4px; border-radius:9px 0 0 9px; background:currentColor; }
+    .caption-top { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; align-items:center; }
+    .caption-id { font-size:.69rem; font-weight:900; letter-spacing:.04em; }
+    .caption-type { color:var(--muted); font-size:.66rem; font-weight:750; }
+    .caption h3 { margin:8px 0 4px; color:var(--ink); font-size:.92rem; }
+    .caption p { margin:0; color:#526078; font-size:.79rem; }
+    .focus { margin-top:9px; padding-top:8px; color:#5f4824; border-top:1px dashed #dfc38b; font-size:.74rem; }
+    .focus strong { color:#8a5400; }
+    .empty { padding:16px; color:var(--muted); border:1px dashed #b9c1ce; border-radius:9px; text-align:center; font-size:.8rem; }
+    .proposal-summary { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:22px; }
+    .proposal-summary div { padding:15px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+    .proposal-summary strong { display:block; font-size:.78rem; }
+    .proposal-summary p { margin:5px 0 0; color:var(--muted); font-size:.76rem; }
+    @media (max-width:850px) { .hero-inner { grid-template-columns:1fr; gap:22px; } .context { align-items:flex-start; flex-direction:column; } .legend { justify-content:flex-start; } .captions,.proposal-summary { grid-template-columns:1fr; } }
+    @media (max-width:620px) { .proposal-nav a:not([aria-current="page"]) { display:none; } .topbar-inner,.hero-inner,main { width:min(100% - 24px,1320px); } .panel { padding:12px; } .panel-head { display:block; } .coverage { display:block; margin-top:8px; } }
+    @media print { body { background:#fff; font-size:10pt; } .topbar,.tablist { display:none; } .hero { color:#111; background:#fff; border-bottom:2px solid #111; } .hero p,.hero-note span { color:#333; } .hero-note { border-color:#bbb; background:#fff; } .panel { display:block !important; padding:0; border:0; box-shadow:none; } .panel + .panel { margin-top:24px; } .location { break-inside:avoid; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">AI Change Review · UI Lab</div>
+      <nav class="proposal-nav" aria-label="UI案の切り替え"><a href="index.html">現行案</a><a href="source-location-a.html" aria-current="page">案A</a><a href="source-location-b.html">案B</a><a href="source-location-c.html">案C</a></nav>
+    </div>
+  </header>
+
+  <div class="hero">
+    <div class="hero-inner">
+      <div><p class="kicker">Pattern A · File tabs</p><h1>ファイルを選び、<br>変更箇所ごとに読む</h1><p>diffを主役にし、Change Unitの説明を各hunk直下のキャプションとして束ねます。</p></div>
+      <aside class="hero-note"><strong>向いているレビュー</strong><span>ファイル構成を手がかりに読むことが多い、小〜中規模の変更。コード幅を確保しつつ説明との距離を短くできます。</span></aside>
+    </div>
+  </div>
+
+  <main>
+    <section class="context" aria-label="レポート概要とChange Unit凡例">
+      <div><strong>復習対象判定ロジックを追加</strong><p>2 files · 3 change locations · +31 / −2 lines</p></div>
+      <div class="legend" aria-label="Change Unitの色分け"><span class="chip cu1">CU-001 時刻依存</span><span class="chip cu2">CU-002 期限境界</span><span class="chip cu3">CU-003 テスト</span></div>
+    </section>
+
+    <section class="file-tabs" aria-label="ファイル別の変更箇所">
+      <input class="radio" type="radio" name="file-tab" id="tab-core" checked>
+      <input class="radio" type="radio" name="file-tab" id="tab-tests">
+      <div class="tablist" role="tablist" aria-label="変更ファイル">
+        <label class="tab" for="tab-core">src/review.rs <small>2箇所</small></label>
+        <label class="tab" for="tab-tests">tests/review.rs <small>1箇所</small></label>
+      </div>
+
+      <div class="panels">
+        <div class="panel panel-core">
+          <header class="panel-head"><div><h2>crates/learning-core/src/review.rs</h2><p>ReviewScheduleの公開APIと期限判定</p></div><span class="coverage">変更行 5 / 5 説明済み</span></header>
+          <div class="location-list">
+            <article class="location">
+              <header class="location-head"><strong>変更箇所 01 · 基準日を入力に追加</strong><span>L39 → L42</span></header>
+              <div class="diff-scroll"><div class="hunk"><div class="hunk-title">@@ -38,5 +38,8 @@ impl ReviewSchedule {</div><div class="line"><span class="ln">38</span><span class="ln">38</span><span class="sign"> </span><span class="code">impl ReviewSchedule {</span><span></span></div><div class="line del"><span class="ln">39</span><span class="ln"></span><span class="sign">−</span><span class="code">    pub fn is_due(&amp;self) -&gt; bool {</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">42</span><span class="sign">+</span><span class="code">    pub fn is_due(&amp;self, today: LocalDate) -&gt; bool {</span><span class="pins"><span class="pin cu1">01</span></span></div><div class="line"><span class="ln">41</span><span class="ln">44</span><span class="sign"> </span><span class="code">    }</span><span></span></div></div></div>
+              <div class="captions">
+                <aside class="caption cu1"><div class="caption-top"><span class="caption-id">CU-001 · AIによる説明</span><span class="caption-type">API設計</span></div><h3>時間への暗黙依存を除去</h3><p>現在日をdomain内部で取得せず、呼び出し側の責務として明示します。同じ入力から同じ結果を得られます。</p><div class="focus"><strong>確認:</strong> LocalDateがユーザーのtimezoneで生成されること。</div></aside>
+              </div>
+            </article>
+
+            <article class="location">
+              <header class="location-head"><strong>変更箇所 02 · 今日を含む期限判定</strong><span>L42–44</span></header>
+              <div class="diff-scroll"><div class="hunk"><div class="hunk-title">@@ -42,3 +42,4 @@ pub fn is_due</div><div class="line"><span class="ln"></span><span class="ln">42</span><span class="sign"> </span><span class="code">    pub fn is_due(&amp;self, today: LocalDate) -&gt; bool {</span><span class="pins"><span class="pin cu1">01</span></span></div><div class="line add"><span class="ln"></span><span class="ln">43</span><span class="sign">+</span><span class="code">        self.due_date &lt;= today</span><span class="pins"><span class="pin cu2">02</span></span></div><div class="line"><span class="ln"></span><span class="ln">44</span><span class="sign"> </span><span class="code">    }</span><span></span></div></div></div>
+              <div class="captions">
+                <aside class="caption cu1"><div class="caption-top"><span class="caption-id">CU-001 · 関連説明</span><span class="caption-type">入力境界</span></div><h3>判定基準は引数のtoday</h3><p>この行は外部入力された基準日を実際の判定へ接続します。</p></aside>
+                <aside class="caption cu2"><div class="caption-top"><span class="caption-id">CU-002 · AIによる説明</span><span class="caption-type">ビジネスルール</span></div><h3><code>&lt;=</code> で包含境界を明示</h3><p>期限が今日と同じ場合も対象に含め、未来日のみを除外します。</p><div class="focus"><strong>確認:</strong> 仕様の「今日以前」が包含境界であること。</div></aside>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <div class="panel panel-tests">
+          <header class="panel-head"><div><h2>crates/learning-core/tests/review.rs</h2><p>期限判定の境界値テスト</p></div><span class="coverage">変更行 24 / 24 説明済み</span></header>
+          <div class="location-list">
+            <article class="location">
+              <header class="location-head"><strong>変更箇所 03 · 過去・今日・未来の境界</strong><span>L68–96</span></header>
+              <div class="diff-scroll"><div class="hunk"><div class="hunk-title">@@ -64,4 +68,28 @@ mod tests {</div><div class="line add"><span class="ln"></span><span class="ln">68</span><span class="sign">+</span><span class="code">    #[test]</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">69</span><span class="sign">+</span><span class="code">    fn due_today_is_ready_for_review() {</span><span class="pins"><span class="pin cu3">03</span></span></div><div class="line add"><span class="ln"></span><span class="ln">70</span><span class="sign">+</span><span class="code">        let today = LocalDate::from_ymd(2026, 9, 22);</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">71</span><span class="sign">+</span><span class="code">        assert!(schedule(today).is_due(today));</span><span class="pins"><span class="pin cu2">02</span><span class="pin cu3">03</span></span></div><div class="line add"><span class="ln"></span><span class="ln">72</span><span class="sign">+</span><span class="code">    }</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">74</span><span class="sign">+</span><span class="code">    // past: true / future: false</span><span class="pins"><span class="pin cu3">03</span></span></div></div></div>
+              <div class="captions">
+                <aside class="caption cu2"><div class="caption-top"><span class="caption-id">CU-002 · 関連説明</span><span class="caption-type">仕様との対応</span></div><h3>今日の期待値を固定</h3><p>実装した包含境界が、同日のケースでtrueになることを確認します。</p></aside>
+                <aside class="caption cu3"><div class="caption-top"><span class="caption-id">CU-003 · AIによる説明</span><span class="caption-type">テスト</span></div><h3>比較演算子の両側を保護</h3><p>過去・今日・未来の3分類をテストし、境界の変更を検知できるようにします。</p></aside>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="proposal-summary" aria-label="案Aの評価観点"><div><strong>長所</strong><p>実際のレビュー順に近く、ファイル単位で迷いにくい。コード幅も安定します。</p></div><div><strong>注意点</strong><p>同じChange Unitが複数タブへ分散するため、全体像は凡例や集約表示で補います。</p></div><div><strong>推奨規模</strong><p>2〜15ファイル程度。小〜中規模のPRで最も自然に機能します。</p></div></section>
+  </main>
+</body>
+</html>
