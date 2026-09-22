@@ -25,16 +25,14 @@
     h2 { margin:0 0 16px; font-size:1.25rem; letter-spacing:-.02em; }
     h3 { margin:0; font-size:1.04rem; }
     .eyebrow { color:var(--muted); font-size:.72rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
-    .summary-grid { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(280px,.8fr); gap:18px; margin-top:-26px; }
+    .summary-wrap { margin-top:-26px; }
     .card { border:1px solid var(--line); border-radius:14px; background:var(--paper); box-shadow:0 8px 25px rgba(25,38,67,.055); }
     .summary { padding:26px; }
     .summary h2 { margin:6px 0 10px; font-size:1.55rem; }
-    .summary p { margin:0; color:#46536b; }
+    .summary > p { margin:0; color:#46536b; }
     .recommend { margin-top:22px; padding:16px 18px; border-left:4px solid var(--blue); border-radius:8px; background:var(--blue-soft); }
-    .recommend strong { display:block; margin-bottom:4px; font-size:.76rem; letter-spacing:.07em; text-transform:uppercase; }
-    .decision { padding:24px; background:#fffaf0; border-color:#efcf92; }
-    .decision .risk { margin:0 0 16px; }
-    .decision p { margin:0; color:#5e4a28; font-size:.92rem; }
+    .recommend h3 { margin-bottom:7px; font-size:.76rem; letter-spacing:.07em; text-transform:uppercase; }
+    .recommend p { margin:0; color:#30486f; font-size:.92rem; }
     .risk, .status, .type { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:99px; font-size:.72rem; font-weight:800; white-space:nowrap; }
     .risk.medium { color:#714100; background:var(--amber-soft); border:1px solid #ebc979; }
     .status.action { color:#713b00; background:#fff1cf; }
@@ -121,8 +119,8 @@
     .change-files { display:block; color:#526078; font: .75rem/1.5 ui-monospace,SFMono-Regular,Consolas,monospace; }
     .open-label { color:var(--blue); font-size:.8rem; font-weight:800; white-space:nowrap; }
     @media (max-width:980px) { .metrics { grid-template-columns:repeat(4,1fr); } .unit-body { grid-template-columns:1fr; } .unit-side { border-top:1px solid var(--line); border-left:0; } }
-    @media (max-width:720px) { .summary-grid { grid-template-columns:1fr; } .metrics,.report-meta { grid-template-columns:repeat(2,1fr); } .priority { grid-template-columns:auto 1fr; } .priority .button { grid-column:2; justify-self:start; } .topbar-inner { align-items:flex-start; } .section-intro { display:block; } .section-intro p { margin-top:7px; } .change-link { grid-template-columns:44px 1fr; } .open-label { grid-column:2; } .report-details-note { display:none; } }
-    @media print { body { background:#fff; font-size:10pt; } .topbar, .back, .button, .report-details > summary { display:none; } .report-head { padding:16px 0; background:#fff; color:#000; border-bottom:2px solid #000; } main { width:100%; } .summary-grid { margin-top:20px; } .card,details.diff { box-shadow:none; break-inside:avoid; } details.diff:not([open]) > *:not(summary), details.report-details:not([open]) > *:not(summary) { display:block; } .report-details-body { padding:20px 0 0; border-top:0; background:#fff; } section { break-inside:auto; } }
+    @media (max-width:720px) { .metrics,.report-meta { grid-template-columns:repeat(2,1fr); } .priority { grid-template-columns:auto 1fr; } .priority .button { grid-column:2; justify-self:start; } .topbar-inner { align-items:flex-start; } .section-intro { display:block; } .section-intro p { margin-top:7px; } .change-link { grid-template-columns:44px 1fr; } .open-label { grid-column:2; } .report-details-note { display:none; } }
+    @media print { body { background:#fff; font-size:10pt; } .topbar, .back, .button, .report-details > summary { display:none; } .report-head { padding:16px 0; background:#fff; color:#000; border-bottom:2px solid #000; } main { width:100%; } .summary-wrap { margin-top:20px; } .card,details.diff { box-shadow:none; break-inside:avoid; } details.diff:not([open]) > *:not(summary), details.report-details:not([open]) > *:not(summary) { display:block; } .report-details-body { padding:20px 0 0; border-top:0; background:#fff; } section { break-inside:auto; } }
   </style>
 </head>
 <body>
@@ -137,18 +135,16 @@
 
   <main>
     <section id="overview" aria-labelledby="overview-title">
-      <div class="summary-grid">
+      <div class="summary-wrap">
         <article class="card summary">
           <div class="eyebrow">AIによる評価</div>
           <h2 id="overview-title">変更は仕様および既存のdomain設計と概ね整合</h2>
           <p>期限日が今日以前の項目を復習対象とする判定が追加されています。基準日を外部から受け取るため、現在時刻への直接依存も避けられています。</p>
-          <div class="recommend"><strong>推奨アクション</strong>Change Unit 1のtimezone仕様を確認し、問題なければ承認する。</div>
+          <div class="recommend">
+            <h3>推奨アクション</h3>
+            <p>Change Unit 1のtimezone仕様を確認し、問題なければ承認する。</p>
+          </div>
         </article>
-        <aside class="card decision" aria-label="レビュー判断">
-          <div class="risk medium">● MEDIUM RISK</div>
-          <h3>人間による確認が必要</h3>
-          <p>仕様中の「今日」がユーザーのlocal dateを意味するか確認してください。</p>
-        </aside>
       </div>
     </section>
 

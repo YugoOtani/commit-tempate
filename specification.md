@@ -431,6 +431,16 @@ HTMLは次の順序で構成する。
 - 対応するdiff行へのアンカー
 - 解決状態
 
+実装概要と「レビューで判断すること」は横並びにせず、実装概要を先にして縦に配置する。
+
+コードをChange Unitの主情報として扱い、各Implementation Sectionは次の順に表示する。
+
+1. タイトルおよび実装位置
+2. 対応するdiff
+3. Implementation Sectionの実装説明
+
+diffと実装説明は横並びにせず縦に配置する。diffを先に横幅いっぱいで表示し、説明が長くなってもコードの表示幅を狭めない。AIのassessmentおよび人間が確認すべき観点は、Change Unit全体の情報としてImplementation Sectionとは分けて表示する。
+
 ### 9.7 ファイル別diff
 
 MVPではunified表示を採用する。
