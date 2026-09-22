@@ -1,0 +1,70 @@
+{
+  "version": "1",
+
+  "summary": {
+    "title": "復習対象判定ロジックを追加",
+    "review": "変更は仕様および既存のdomain設計と概ね整合している。",
+    "recommended_action": "Change Unit 1のtimezone仕様を確認し、問題なければ承認する。"
+  },
+
+  "change_units": [
+    {
+      "id": "cu-001",
+      "title": "復習対象判定ロジック",
+
+      "implementation": {
+        "summary": "期限日が今日以前の項目を復習対象とする判定を追加した。",
+
+        "description": "復習対象判定をdomain layerに追加し、現在時刻に直接依存しないよう基準日を外部から受け取る構造とした。",
+
+        "sections": [
+          {
+            "title": "復習対象の判定",
+            "path": "crates/learning-core/src/review.rs",
+            "symbol": "ReviewSchedule::is_due",
+            "start_line": 42,
+            "end_line": 45,
+            "description": "期限日が基準日以前なら復習対象と判定する。"
+          },
+          {
+            "title": "基準日の外部入力",
+            "path": "crates/learning-core/src/review.rs",
+            "symbol": "ReviewSchedule::is_due",
+            "start_line": 43,
+            "end_line": 43,
+            "description": "現在日をdomain内部で取得せず、呼び出し側からLocalDateとして受け取る。"
+          }
+        ]
+      },
+
+      "review": {
+        "risk": "medium",
+        "assessment": "Acceptance Criteriaと整合しており、domain layerへの配置も既存方針と一致している。",
+        "human_review_required": true,
+        "human_review_focus": "仕様中の「今日」がユーザーのlocal dateを意味するか確認する。"
+      },
+
+      "references": [
+        {
+          "type": "spec",
+          "path": ".ai/features/review-scheduling/tasks/001-review-domain/task.md",
+          "section": "Acceptance Criteria",
+          "description": "今日・過去・未来の期限に関する仕様"
+        },
+        {
+          "type": "test_plan",
+          "path": ".ai/features/review-scheduling/tasks/001-review-domain/test-plan.md",
+          "section": "Boundary Cases",
+          "description": "期限日の正常系・境界値に関するテスト観点"
+        },
+        {
+          "type": "test",
+          "path": "crates/learning-core/tests/review.rs",
+          "start_line": 68,
+          "end_line": 96,
+          "description": "今日・過去・未来の3分類を検証するテスト"
+        }
+      ]
+    }
+  ]
+}

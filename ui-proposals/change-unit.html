@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>CU-001 復習対象判定ロジック — AI Change Review</title>
+  <style>
+    :root { color-scheme:light; --ink:#14213a; --muted:#68738a; --line:#dfe4ed; --paper:#fff; --bg:#f3f6fa; --navy:#14213a; --blue:#255bd7; --blue-soft:#eaf0ff; --amber:#835000; --amber-soft:#fff4d8; --green:#12684f; --green-soft:#e9f8f1; --red-soft:#fff0f1; --code:#101827; --code-ink:#e5ebf5; --code-muted:#8490a3; --code-add:#173d33; --code-del:#43252a; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.55; }
+    a { color:var(--blue); }
+    a:focus-visible, summary:focus-visible { outline:3px solid #ffb000; outline-offset:3px; }
+    .topbar { color:#fff; background:var(--navy); }
+    .topbar-inner { width:min(1240px,calc(100% - 40px)); margin:auto; display:flex; justify-content:space-between; align-items:center; gap:24px; padding:15px 0; }
+    .brand { font-weight:800; }
+    .back { color:#cfdaee; text-decoration:none; font-size:.84rem; }
+    .hero { border-bottom:1px solid var(--line); background:#fff; }
+    .hero-inner, main { width:min(1240px,calc(100% - 40px)); margin:auto; }
+    .hero-inner { padding:38px 0 34px; }
+    .eyebrow { color:var(--blue); font-size:.72rem; font-weight:850; letter-spacing:.11em; text-transform:uppercase; }
+    h1 { margin:7px 0 10px; font-size:clamp(2rem,4vw,3.35rem); letter-spacing:-.045em; line-height:1.08; }
+    .hero-meta { display:flex; flex-wrap:wrap; gap:7px 18px; color:var(--muted); font-size:.8rem; }
+    .risk,.status,.tag { display:inline-flex; align-items:center; padding:3px 8px; border-radius:99px; font-size:.69rem; font-weight:850; white-space:nowrap; }
+    .risk { color:#704100; border:1px solid #e1c270; background:var(--amber-soft); }
+    .status { color:#fff; background:var(--navy); }
+    .tag { color:#42516c; border:1px solid #cfd8e7; background:#fff; border-radius:5px; }
+    main { padding:28px 0 80px; }
+    .jump { display:flex; gap:8px; margin-bottom:26px; overflow:auto; }
+    .jump a { flex:none; padding:7px 11px; border:1px solid var(--line); border-radius:99px; color:#42506a; background:#fff; font-size:.76rem; font-weight:750; text-decoration:none; }
+    section { margin-top:38px; scroll-margin-top:20px; }
+    h2 { margin:0 0 15px; font-size:1.35rem; letter-spacing:-.025em; }
+    h3 { margin:0; font-size:1.04rem; }
+    .card { border:1px solid var(--line); border-radius:14px; background:var(--paper); box-shadow:0 8px 25px rgba(25,38,67,.05); }
+    .summary { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(300px,.75fr); overflow:hidden; }
+    .summary-main,.summary-side { padding:24px; }
+    .summary-main > p { margin:8px 0 0; color:#46536b; }
+    .intent { margin-top:18px; padding:14px 16px; border-left:4px solid var(--blue); border-radius:7px; background:var(--blue-soft); }
+    .intent strong { display:block; margin-bottom:3px; font-size:.72rem; letter-spacing:.07em; text-transform:uppercase; }
+    .summary-side { border-left:1px solid #ead5a5; background:#fff9eb; }
+    .summary-side p { margin:7px 0 0; color:#5e4a28; font-size:.9rem; }
+    .summary-side .risk { margin-bottom:12px; }
+    .section-head { display:flex; justify-content:space-between; align-items:end; gap:24px; margin-bottom:14px; }
+    .section-head h2 { margin:0; }
+    .section-head p { max-width:620px; margin:0; color:var(--muted); font-size:.82rem; }
+    .change-stack { display:grid; gap:18px; }
+    .change { overflow:hidden; }
+    .change-head { display:flex; justify-content:space-between; align-items:start; gap:18px; padding:17px 20px; border-bottom:1px solid var(--line); }
+    .change-title { display:flex; gap:13px; align-items:flex-start; }
+    .number { width:30px; height:30px; flex:none; display:grid; place-items:center; border-radius:8px; color:#fff; background:var(--navy); font-size:.78rem; font-weight:850; }
+    .change-title h3 { margin:1px 0 3px; }
+    .path { color:#667187; font: .72rem/1.5 ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere; }
+    .change-body { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(280px,.7fr); }
+    .code-wrap { min-width:0; overflow:auto; background:var(--code); }
+    .hunk { min-width:670px; padding:10px 0 12px; color:var(--code-ink); font:12px/1.72 ui-monospace,SFMono-Regular,Consolas,monospace; }
+    .hunk-title { padding:4px 14px 9px; color:#9eb1d2; }
+    .line { display:grid; grid-template-columns:42px 42px 22px minmax(max-content,1fr) 28px; }
+    .line > span { padding:1px 7px; }
+    .ln { color:var(--code-muted); text-align:right; border-right:1px solid #2d394b; user-select:none; }
+    .sign { text-align:center; user-select:none; }
+    .code { white-space:pre; }
+    .line.add { background:var(--code-add); }
+    .line.del { background:var(--code-del); }
+    .note-pin { width:20px; height:20px; align-self:center; display:grid; place-items:center; padding:0 !important; border-radius:50%; color:#162038; background:#a9c3ff; font:800 10px/1 ui-sans-serif,sans-serif; }
+    .explanation { padding:20px; border-left:1px solid var(--line); background:#fbfcfe; }
+    .explanation .eyebrow { margin-bottom:8px; }
+    .explanation > p { margin:0; color:#46536b; font-size:.9rem; }
+    .why-list { margin:16px 0 0; padding:0; list-style:none; }
+    .why-list li { display:grid; grid-template-columns:22px 1fr; gap:8px; padding:10px 0; border-top:1px solid var(--line); color:#4a566d; font-size:.82rem; }
+    .why-list b { width:20px; height:20px; display:grid; place-items:center; border-radius:50%; color:#fff; background:var(--blue); font-size:.65rem; }
+    .review-point { margin-top:15px; padding:12px; border:1px solid #e6c16a; border-radius:8px; background:var(--amber-soft); color:#5c461e; font-size:.8rem; }
+    .review-point strong { display:block; margin-bottom:3px; }
+    .legend { margin:11px 0 0; color:var(--muted); font-size:.74rem; }
+    .evidence-list { display:grid; gap:12px; }
+    .evidence { overflow:hidden; }
+    .evidence-summary { display:grid; grid-template-columns:28px minmax(0,1fr) auto; gap:12px; align-items:center; padding:17px 18px; cursor:pointer; list-style:none; }
+    .evidence-summary::-webkit-details-marker { display:none; }
+    .evidence-summary::before { content:"＋"; width:28px; height:28px; display:grid; place-items:center; border-radius:8px; color:var(--blue); background:var(--blue-soft); font-size:1rem; font-weight:850; }
+    .evidence[open] .evidence-summary::before { content:"−"; }
+    .evidence-title { min-width:0; }
+    .evidence-labels { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin-bottom:7px; }
+    .evidence-description { display:block; margin-top:5px; color:var(--muted); font-size:.82rem; }
+    .toggle-label { min-width:88px; color:var(--blue); font-size:.75rem; font-weight:800; text-align:right; }
+    .when-open { display:none; }
+    .evidence[open] .when-closed { display:none; }
+    .evidence[open] .when-open { display:inline; }
+    .evidence-content { padding:0 18px 20px 58px; border-top:1px solid var(--line); background:#fbfcfe; }
+    .document-head { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:15px 0 10px; color:var(--muted); font-size:.75rem; }
+    .document-head strong { display:block; color:var(--ink); font-size:.9rem; }
+    .document-body { overflow:auto; padding:20px; border:1px solid #d7deea; border-radius:10px; background:#fff; color:#344159; font-size:.84rem; }
+    .document-body h4 { margin:0 0 12px; color:var(--ink); font-size:1rem; }
+    .document-body h5 { margin:18px 0 7px; color:var(--ink); font-size:.84rem; }
+    .document-body p { margin:7px 0; }
+    .document-body ul { margin:8px 0 0; padding-left:22px; }
+    .document-body li + li { margin-top:6px; }
+    .document-body table { width:100%; min-width:580px; border-collapse:collapse; }
+    .document-body th,.document-body td { padding:9px 10px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+    .document-body th { background:#f3f6fa; color:var(--ink); }
+    .document-body pre { min-width:620px; margin:0; color:var(--code-ink); font:12px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre; }
+    .document-body.code-document { background:var(--code); }
+    .line-reference { color:var(--muted); font: .7rem/1.5 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:nowrap; }
+    .resolved { color:var(--green); background:var(--green-soft); }
+    .unresolved { color:#812934; background:var(--red-soft); }
+    .footer-nav { display:flex; justify-content:space-between; gap:20px; padding-top:25px; border-top:1px solid var(--line); }
+    .footer-nav a { font-weight:800; text-decoration:none; }
+    @media (max-width:900px) { .summary,.change-body { grid-template-columns:1fr; } .summary-side,.explanation { border-top:1px solid var(--line); border-left:0; } }
+    @media (max-width:620px) { .section-head { display:block; } .section-head p { margin-top:6px; } .change-head { display:block; } .change-head > .tag { margin:10px 0 0 43px; } .topbar-inner { align-items:flex-start; } .evidence-summary { grid-template-columns:28px minmax(0,1fr); align-items:start; } .toggle-label { grid-column:2; text-align:left; } .evidence-content { padding:0 14px 16px; } .document-head { align-items:flex-start; } }
+    @media print { body { background:#fff; font-size:10pt; } .topbar,.jump,.footer-nav,.toggle-label { display:none; } .hero-inner,main { width:100%; } .hero-inner { padding:16px 0; } .card { box-shadow:none; break-inside:avoid; } .code-wrap { background:#fff; border-right:1px solid #bbb; } .hunk { color:#111; } .hunk-title,.ln { color:#555; } .line.add { background:#e9f5ed; } .line.del { background:#fae8e9; } .note-pin { border:1px solid #222; background:#fff; } details.evidence:not([open]) > *:not(summary) { display:block; } .evidence-summary::before { content:""; background:none; } .evidence-content { padding-left:18px; } .document-body.code-document { background:#fff; } .document-body pre { color:#111; } }
+  </style>
+</head>
+<body>
+  <header class="topbar"><div class="topbar-inner"><div class="brand">AI Change Review</div><a class="back" href="index.html">← レポート概要へ戻る</a></div></header>
+  <div class="hero"><div class="hero-inner"><div class="eyebrow">Change Unit · CU-001 · review priority 1</div><h1>復習対象判定ロジック</h1><div class="hero-meta"><span class="risk">● MEDIUM RISK</span><span class="status">人間確認 必須</span><span>2 files</span><span>+31 / −2 lines</span><span>9d820a1 → f46b02c</span></div></div></div>
+
+  <main>
+    <nav class="jump" aria-label="Change Unit内ナビゲーション"><a href="#summary">概要</a><a href="#code">コードと変更理由</a><a href="#evidence">参考資料</a></nav>
+
+    <section id="summary" aria-labelledby="summary-title" style="margin-top:0">
+      <article class="card summary">
+        <div class="summary-main"><div class="eyebrow">変更の概要</div><h2 id="summary-title">期限日と基準日を比較する判定をdomain layerへ追加</h2><p>期限日が今日以前の項目を復習対象とします。現在日を内部で取得せず、呼び出し側から基準日を渡す構造にすることで、判定を決定的かつテスト可能にしています。</p><div class="intent"><strong>この変更で実現すること</strong>「今日」「過去」「未来」の境界を一つの判定メソッドで扱い、呼び出し元のtimezone方針をdomainへ持ち込まない。</div></div>
+        <aside class="summary-side"><span class="risk">● MEDIUM RISK</span><h3>レビューで判断すること</h3><p>仕様中の「今日」がユーザーのlocal dateを意味するか確認してください。コードは基準日を受け取れる設計ですが、その値を誰がどのtimezoneで生成するかはこの差分だけでは確定できません。</p></aside>
+      </article>
+    </section>
+
+    <section id="code" aria-labelledby="code-title">
+      <div class="section-head"><h2 id="code-title">コードと変更理由</h2><p>コードを変更意図の単位で分けています。番号付きマーカーは右側の理由と対応し、AIの説明とGit差分を区別して表示します。</p></div>
+      <div class="change-stack">
+        <article class="card change">
+          <header class="change-head"><div class="change-title"><span class="number">01</span><div><h3>基準日をメソッドの入力にする</h3><div class="path">crates/learning-core/src/review.rs · ReviewSchedule::is_due · L39 → L42</div></div></div><span class="tag">Git diff + AI explanation</span></header>
+          <div class="change-body">
+            <div class="code-wrap" aria-label="基準日を引数へ追加した差分"><div class="hunk"><div class="hunk-title">@@ -38,5 +38,8 @@ impl ReviewSchedule {</div><div class="line"><span class="ln">38</span><span class="ln">38</span><span class="sign"> </span><span class="code">impl ReviewSchedule {</span><span></span></div><div class="line del"><span class="ln">39</span><span class="ln"></span><span class="sign">−</span><span class="code">    pub fn is_due(&amp;self) -&gt; bool {</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">42</span><span class="sign">+</span><span class="code">    pub fn is_due(&amp;self, today: LocalDate) -&gt; bool {</span><span class="note-pin">1</span></div><div class="line"><span class="ln">41</span><span class="ln">44</span><span class="sign"> </span><span class="code">    }</span><span></span></div></div></div>
+            <aside class="explanation"><div class="eyebrow">変更理由 · AIによる説明</div><p>現在日をdomain内部で取得せず、呼び出し側の責務として明示します。</p><ul class="why-list"><li><b>1</b><span><strong>時間への暗黙依存を除去。</strong> 同じ引数なら同じ結果になり、テスト時に時計の差し替えが不要になります。</span></li></ul><div class="review-point"><strong>確認ポイント</strong><code>LocalDate</code> がユーザーのtimezoneで生成される保証は呼び出し側に必要です。</div></aside>
+          </div>
+        </article>
+
+        <article class="card change">
+          <header class="change-head"><div class="change-title"><span class="number">02</span><div><h3>今日を含めて復習対象と判定する</h3><div class="path">crates/learning-core/src/review.rs · ReviewSchedule::is_due · L43</div></div></div><span class="tag">Git diff + AI explanation</span></header>
+          <div class="change-body">
+            <div class="code-wrap" aria-label="期限判定を追加した差分"><div class="hunk"><div class="hunk-title">@@ -42,3 +42,4 @@ pub fn is_due</div><div class="line"><span class="ln"></span><span class="ln">42</span><span class="sign"> </span><span class="code">    pub fn is_due(&amp;self, today: LocalDate) -&gt; bool {</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">43</span><span class="sign">+</span><span class="code">        self.due_date &lt;= today</span><span class="note-pin">1</span></div><div class="line"><span class="ln"></span><span class="ln">44</span><span class="sign"> </span><span class="code">    }</span><span></span></div></div></div>
+            <aside class="explanation"><div class="eyebrow">変更理由 · AIによる説明</div><p>Acceptance Criteriaの「今日または過去」を、包含比較として直接表現します。</p><ul class="why-list"><li><b>1</b><span><strong><code>&lt;=</code> で境界を明示。</strong> 期限が今日と同じ場合も復習対象に含め、未来日のみ除外します。</span></li></ul><div class="review-point"><strong>確認ポイント</strong>仕様の「今日以前」が包含境界であることを確認してください。</div></aside>
+          </div>
+        </article>
+
+        <article class="card change">
+          <header class="change-head"><div class="change-title"><span class="number">03</span><div><h3>過去・今日・未来の境界をテストする</h3><div class="path">crates/learning-core/tests/review.rs · L68–96</div></div></div><span class="tag">Git diff + AI explanation</span></header>
+          <div class="change-body">
+            <div class="code-wrap" aria-label="期限判定のテスト差分"><div class="hunk"><div class="hunk-title">@@ -64,4 +68,28 @@ mod tests {</div><div class="line add"><span class="ln"></span><span class="ln">68</span><span class="sign">+</span><span class="code">    #[test]</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">69</span><span class="sign">+</span><span class="code">    fn due_today_is_ready_for_review() {</span><span class="note-pin">1</span></div><div class="line add"><span class="ln"></span><span class="ln">70</span><span class="sign">+</span><span class="code">        let today = LocalDate::from_ymd(2026, 9, 22);</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">71</span><span class="sign">+</span><span class="code">        assert!(schedule(today).is_due(today));</span><span class="note-pin">2</span></div><div class="line add"><span class="ln"></span><span class="ln">72</span><span class="sign">+</span><span class="code">    }</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">74</span><span class="sign">+</span><span class="code">    // past: true / future: false</span><span class="note-pin">3</span></div></div></div>
+            <aside class="explanation"><div class="eyebrow">変更理由 · AIによる説明</div><p>比較演算子の境界を、代表的な3分類で固定します。</p><ul class="why-list"><li><b>1</b><span>テスト名で「今日」の期待結果を示します。</span></li><li><b>2</b><span>基準日と期限日が同じ場合に <code>true</code> を検証します。</span></li><li><b>3</b><span>過去と未来も確認し、包含比較の両側を保護します。</span></li></ul></aside>
+          </div>
+        </article>
+      </div>
+      <p class="legend">差分記号: <strong>＋ 追加</strong> / <strong>− 削除</strong> / 空白 コンテキスト。濃いコード領域はGit由来の事実、右側はレビューJSONに基づく説明です。</p>
+    </section>
+
+    <section id="evidence" aria-labelledby="evidence-title">
+      <div class="section-head"><h2 id="evidence-title">参考資料</h2><p>各資料を開くと、この画面を離れずに参照箇所の内容を確認できます。diff外の資料も解決状態とともに表示します。</p></div>
+      <div class="evidence-list">
+        <details class="card evidence">
+          <summary class="evidence-summary">
+            <span class="evidence-title"><span class="evidence-labels"><span class="tag">仕様</span><span class="status unresolved">diff外</span></span><span class="path">.ai/features/review-scheduling/tasks/001-review-domain/task.md</span><span class="evidence-description">Acceptance Criteria — 今日・過去・未来の期限に関する仕様</span></span>
+            <span class="toggle-label" aria-hidden="true"><span class="when-closed">資料を表示</span><span class="when-open">資料を閉じる</span></span>
+          </summary>
+          <div class="evidence-content">
+            <div class="document-head"><span><strong>Acceptance Criteria</strong>task.md 内の参照セクション</span><span class="line-reference">REFERENCE CONTENT</span></div>
+            <article class="document-body">
+              <h4>Review scheduling — Acceptance Criteria</h4>
+              <ul>
+                <li>期限日が基準日より過去の場合、復習対象として判定されること。</li>
+                <li>期限日が基準日と同日の場合、復習対象として判定されること。</li>
+                <li>期限日が基準日より未来の場合、復習対象と判定されないこと。</li>
+                <li>復習対象の判定は domain layer で行い、現在日時へ直接依存しないこと。</li>
+              </ul>
+              <h5>補足</h5>
+              <p>基準日は呼び出し側でユーザーの timezone を考慮し、<code>LocalDate</code> として渡す。</p>
+            </article>
+          </div>
+        </details>
+
+        <details class="card evidence">
+          <summary class="evidence-summary">
+            <span class="evidence-title"><span class="evidence-labels"><span class="tag">テスト計画</span><span class="status unresolved">diff外</span></span><span class="path">.ai/features/review-scheduling/tasks/001-review-domain/test-plan.md</span><span class="evidence-description">Boundary Cases — 期限日の正常系・境界値</span></span>
+            <span class="toggle-label" aria-hidden="true"><span class="when-closed">資料を表示</span><span class="when-open">資料を閉じる</span></span>
+          </summary>
+          <div class="evidence-content">
+            <div class="document-head"><span><strong>Boundary Cases</strong>test-plan.md 内の参照セクション</span><span class="line-reference">REFERENCE CONTENT</span></div>
+            <div class="document-body">
+              <table>
+                <thead><tr><th>ケース</th><th>期限日</th><th>基準日</th><th>期待結果</th></tr></thead>
+                <tbody><tr><td>過去</td><td>2026-09-21</td><td>2026-09-22</td><td><code>true</code></td></tr><tr><td>今日</td><td>2026-09-22</td><td>2026-09-22</td><td><code>true</code></td></tr><tr><td>未来</td><td>2026-09-23</td><td>2026-09-22</td><td><code>false</code></td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="card evidence">
+          <summary class="evidence-summary">
+            <span class="evidence-title"><span class="evidence-labels"><span class="tag">テスト</span><span class="status resolved">解決済み</span></span><span class="path">crates/learning-core/tests/review.rs:68–96</span><span class="evidence-description">今日・過去・未来の3分類を検証するテスト</span></span>
+            <span class="toggle-label" aria-hidden="true"><span class="when-closed">資料を表示</span><span class="when-open">資料を閉じる</span></span>
+          </summary>
+          <div class="evidence-content">
+            <div class="document-head"><span><strong>review.rs</strong>参照範囲のソース</span><span class="line-reference">L68–96</span></div>
+            <div class="document-body code-document"><pre><code>#[test]
+fn due_today_is_ready_for_review() {
+    let today = LocalDate::from_ymd(2026, 9, 22);
+    assert!(schedule(today).is_due(today));
+}
+
+#[test]
+fn past_due_is_ready_for_review() {
+    let today = LocalDate::from_ymd(2026, 9, 22);
+    let yesterday = LocalDate::from_ymd(2026, 9, 21);
+    assert!(schedule(yesterday).is_due(today));
+}
+
+#[test]
+fn future_due_is_not_ready_for_review() {
+    let today = LocalDate::from_ymd(2026, 9, 22);
+    let tomorrow = LocalDate::from_ymd(2026, 9, 23);
+    assert!(!schedule(tomorrow).is_due(today));
+}</code></pre></div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <nav class="footer-nav" aria-label="Change Unitページナビゲーション"><a href="index.html">← レポート概要へ</a><span>CU-001 / 1 of 1</span></nav>
+  </main>
+</body>
+</html>
