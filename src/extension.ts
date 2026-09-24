@@ -12,12 +12,18 @@ import {
   GitDiffContentProvider,
   gitDiffDocumentScheme,
 } from "./source/diffProvider";
+import {
+  ExplanationCodeLensProvider,
+  formatExplanationDetail,
+  showExplanationCommand,
+} from "./source/explanation";
 import { openDiffLocation } from "./source/sourceNavigation";
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel("AI Change Review");
   const flowTreeDataProvider = new FlowTreeDataProvider();
   const diffContentProvider = new GitDiffContentProvider();
+  const explanationProvider = new ExplanationCodeLensProvider();
   const highlighter = new SourceLocationHighlighter();
   let review: ChangeReview | undefined;
   const flowTree = vscode.window.createTreeView("aiChangeReview.flowNavigator", {
@@ -49,7 +55,13 @@ export function activate(context: vscode.ExtensionContext): void {
         }
 
         try {
-          await openDiffLocation(review, location, diffContentProvider, highlighter);
+          await openDiffLocation(
+            review,
+            location,
+            diffContentProvider,
+            highlighter,
+            explanationProvider,
+          );
           flowTreeDataProvider.selectStep(flowId, stepId);
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error);
@@ -57,6 +69,24 @@ export function activate(context: vscode.ExtensionContext): void {
           await vscode.window.showErrorMessage(`Git Diffを開けません: ${detail}`);
         }
       }
+    },
+  );
+  const showExplanation = vscode.commands.registerCommand(
+    showExplanationCommand,
+    async (documentUri: unknown) => {
+      if (typeof documentUri !== "string") {
+        return;
+      }
+
+      const explanation = explanationProvider.getExplanation(documentUri);
+      if (!explanation) {
+        return;
+      }
+
+      await vscode.window.showInformationMessage(explanation.title, {
+        modal: true,
+        detail: formatExplanationDetail(explanation),
+      });
     },
   );
   const openReview = vscode.commands.registerCommand("aiChangeReview.openReview", async () => {
@@ -79,14 +109,20 @@ export function activate(context: vscode.ExtensionContext): void {
     output,
     flowTreeDataProvider,
     diffContentProvider,
+    explanationProvider,
     highlighter,
     vscode.workspace.registerTextDocumentContentProvider(
       gitDiffDocumentScheme,
       diffContentProvider,
     ),
+    vscode.languages.registerCodeLensProvider(
+      { scheme: gitDiffDocumentScheme },
+      explanationProvider,
+    ),
     flowTree,
     selectFlow,
     selectStep,
+    showExplanation,
     openReview,
   );
 }

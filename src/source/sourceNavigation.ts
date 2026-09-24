@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import type { ChangeReview, SourceLocation } from "../review/schema";
 import type { SourceLocationHighlighter } from "./decoration";
 import type { GitDiffContentProvider } from "./diffProvider";
+import type { ExplanationCodeLensProvider } from "./explanation";
 import { readRevisionFileContents } from "./gitRevision";
 
 export async function openDiffLocation(
@@ -9,6 +10,7 @@ export async function openDiffLocation(
   location: SourceLocation,
   contentProvider: GitDiffContentProvider,
   highlighter: SourceLocationHighlighter,
+  explanationProvider: ExplanationCodeLensProvider,
 ): Promise<void> {
   const workspaceRoots = vscode.workspace.workspaceFolders?.map(
     (workspaceFolder) => workspaceFolder.uri.fsPath,
@@ -26,6 +28,12 @@ export async function openDiffLocation(
     contents.baseContent,
     contents.targetContent,
   );
+  const explanation = review.explanations.find(
+    (candidate) => candidate.locationId === location.id,
+  );
+  if (explanation) {
+    explanationProvider.register(documents.target, location, explanation);
+  }
 
   await vscode.commands.executeCommand(
     "vscode.diff",

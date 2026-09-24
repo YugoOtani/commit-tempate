@@ -21,7 +21,13 @@ type MockRangeValue = {
   endCharacter: number;
 };
 
-it("Flow StepからGit Diffを開き、current表示とhighlightを同期する", async () => {
+type MockDocument = {
+  uri: MockUri;
+  lineCount: number;
+  lineAt(line: number): { text: string };
+};
+
+it("Flow StepからGit Diffを開き、current表示・highlight・Explanationを同期する", async () => {
   type CommandHandler = (...args: unknown[]) => unknown;
   type TreeElement = { kind: "flow" | "step" | "location" };
   type TreeDataProvider = {
@@ -35,6 +41,12 @@ it("Flow StepからGit Diffを開き、current表示とhighlightを同期する"
   };
   type ContentProvider = {
     provideTextDocumentContent(uri: MockUri): string;
+  };
+  type CodeLensProvider = {
+    provideCodeLenses(document: MockDocument): Array<{
+      range: MockRangeValue;
+      command?: { command: string; title: string; arguments?: unknown[] };
+    }>;
   };
 
   class MockEventEmitter<T> {
@@ -70,12 +82,23 @@ it("Flow StepからGit Diffを開き、current表示とhighlightを同期する"
     constructor(readonly id: string) {}
   }
 
+  class MockCodeLens {
+    constructor(
+      readonly range: MockRangeValue,
+      readonly command?: { command: string; title: string; arguments?: unknown[] },
+    ) {}
+  }
+
   const commandHandlers = new Map<string, CommandHandler>();
   let treeDataProvider: TreeDataProvider | undefined;
   let contentProvider: ContentProvider | undefined;
+  let codeLensProvider: CodeLensProvider | undefined;
   let messageHandler: ((message: unknown) => void) | undefined;
   let webviewHtml = "";
-  const informationMessages: string[] = [];
+  const informationMessages: Array<{
+    message: string;
+    options: { modal?: boolean; detail?: string } | undefined;
+  }> = [];
   const outputLines: string[] = [];
   const revealedRanges: Array<MockRangeValue & { revealType: number }> = [];
   const decorationCalls: Array<{ uri: string; ranges: MockRangeValue[] }> = [];
@@ -83,11 +106,7 @@ it("Flow StepからGit Diffを開き、current表示とhighlightを同期する"
   const baseSource = createSource("base", 700);
   const targetSource = createSource("target", 700);
   const visibleTextEditors: Array<{
-    document: {
-      uri: MockUri;
-      lineCount: number;
-      lineAt(line: number): { text: string };
-    };
+    document: MockDocument;
     revealRange(range: MockRange, revealType: number): void;
     setDecorations(_decorationType: unknown, ranges: MockRange[]): void;
   }> = [];
@@ -159,6 +178,7 @@ it("Flow StepからGit Diffを開き、current表示とhighlightを同期する"
     },
     EventEmitter: MockEventEmitter,
     Range: MockRange,
+    CodeLens: MockCodeLens,
     ThemeColor: MockThemeColor,
     TreeItem: MockTreeItem,
     TreeItemCollapsibleState: {
@@ -226,6 +246,12 @@ it("Flow StepからGit Diffを開き、current表示とhighlightを同期する"
         visibleTextEditors.splice(0, visibleTextEditors.length, editor);
       },
     },
+    languages: {
+      registerCodeLensProvider(_selector: unknown, provider: CodeLensProvider) {
+        codeLensProvider = provider;
+        return { dispose() {} };
+      },
+    },
     window: {
       visibleTextEditors,
       createOutputChannel() {
@@ -259,8 +285,11 @@ it("Flow StepからGit Diffを開き、current表示とhighlightを同期する"
           },
         };
       },
-      async showInformationMessage(message: string) {
-        informationMessages.push(message);
+      async showInformationMessage(
+        message: string,
+        options?: { modal?: boolean; detail?: string },
+      ) {
+        informationMessages.push({ message, options });
       },
       async showErrorMessage(message: string) {
         assert.fail(message);
@@ -300,6 +329,7 @@ it("Flow StepからGit Diffを開き、current表示とhighlightを同期する"
     assert.ok(messageHandler);
     assert.ok(treeDataProvider);
     assert.ok(contentProvider);
+    assert.ok(codeLensProvider);
 
     const flows = treeDataProvider.getChildren();
     assert.equal(flows.length, 4);
@@ -338,6 +368,39 @@ it("Flow StepからGit Diffを開き、current表示とhighlightを同期する"
       endCharacter: "target line 21".length,
     }]);
 
+    const requestCodeLenses = codeLensProvider.provideCodeLenses(
+      visibleTextEditors[0].document,
+    );
+    assert.equal(requestCodeLenses.length, 1);
+    assert.equal(
+      requestCodeLenses[0].command?.title,
+      "$(comment-discussion) Python protocol で user-replay を受理",
+    );
+    assert.deepEqual({ ...requestCodeLenses[0].range }, {
+      startLine: 14,
+      startCharacter: 0,
+      endLine: 14,
+      endCharacter: 0,
+    });
+    const showRequestExplanation = commandHandlers.get(
+      requestCodeLenses[0].command?.command ?? "",
+    );
+    assert.ok(showRequestExplanation);
+    await showRequestExplanation(...(requestCodeLenses[0].command?.arguments ?? []));
+    assert.deepEqual(informationMessages.at(-1), {
+      message: "Python protocol で user-replay を受理",
+      options: {
+        modal: true,
+        detail: [
+          "Role",
+          "VS Code から送信される start request の executionMode として user-replay をvalidation可能にする。",
+          "",
+          "Why",
+          "TypeScript 側で追加した新しい実行モードを Python 側の型検証で拒否しないため。",
+        ].join("\n"),
+      },
+    });
+
     replaySteps = treeDataProvider.getChildren(flows[0]);
     assert.match(treeDataProvider.getTreeItem(replaySteps[0]).label, /^✓ /);
     assert.match(treeDataProvider.getTreeItem(replaySteps[1]).label, /^✓ /);
@@ -367,6 +430,29 @@ it("Flow StepからGit Diffを開き、current表示とhighlightを同期する"
     assert.deepEqual(decorationCalls.at(-2)?.ranges, []);
     assert.equal(decorationCalls.at(-1)?.uri, diffCommands.at(-1)?.right.toString());
 
+    const packageCodeLenses = codeLensProvider.provideCodeLenses(
+      visibleTextEditors[0].document,
+    );
+    assert.equal(packageCodeLenses.length, 1);
+    const showPackageExplanation = commandHandlers.get(
+      packageCodeLenses[0].command?.command ?? "",
+    );
+    assert.ok(showPackageExplanation);
+    await showPackageExplanation(...(packageCodeLenses[0].command?.arguments ?? []));
+    assert.deepEqual(informationMessages.at(-1), {
+      message: "debug configuration で user-replay を許可",
+      options: {
+        modal: true,
+        detail: [
+          "Role",
+          "VS Code の debug configuration schema に user-replay を追加し、設定ファイルから新しい実行モードを指定できるようにする。",
+          "",
+          "Watch",
+          "• enum と enumDescriptions の並びを対応させる",
+        ].join("\n"),
+      },
+    });
+
     const secondFlowItem = treeDataProvider.getTreeItem(flows[1]);
     assert.ok(secondFlowItem.command);
     const selectSecondFlow = commandHandlers.get(secondFlowItem.command.command);
@@ -385,7 +471,10 @@ it("Flow StepからGit Diffを開き、current表示とhighlightを同期する"
 
     messageHandler({ type: "openFlow", flowId: "replay-execution" });
     assert.deepEqual(outputLines, ["openFlowを受信: replay-execution"]);
-    assert.deepEqual(informationMessages, ["Flowを受信しました: replay-execution"]);
+    assert.deepEqual(informationMessages.at(-1), {
+      message: "Flowを受信しました: replay-execution",
+      options: undefined,
+    });
   } finally {
     moduleRuntime._load = originalLoad;
   }

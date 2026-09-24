@@ -694,6 +694,14 @@ Replay 専用の実行ループを追加せず、
 
 最小コストで「コード横の説明」の UX を確認する。
 
+MVP では CodeLens を採用する。
+
+ただし、Diff Editor で CodeLens を表示するには VS Code の
+`diffEditor.codeLens` 設定を有効にする必要がある。
+MVP の UX 確認後、追加設定に依存せず Explanation を確認できる方式として、
+Decoration + Hover 案を検討する。
+この検討および方式変更は MVP の完成条件には含めない。
+
 Comments API が自然に使えるなら採用する。
 
 ---
