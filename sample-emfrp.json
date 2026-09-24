@@ -2,430 +2,352 @@
   "change": {
     "id": "emfrp-user-replay",
     "title": "最後に与えた時変値を自動で記録・再生する",
-    "request": "最後に与えた時変値を保存し、次回のデバッグ実行時にその入力履歴を再利用できるようにする",
+    "request": "最後に与えた時変値を保存し、次回のデバッグ実行で再利用できるようにする",
     "baseRevision": "3ab8547^",
     "targetRevision": "3ab8547"
   },
 
   "overview": {
-    "summary": "デバッグ実行中の入力履歴を trace.txt に保存し、user-replay モードでは保存済み履歴を InputInterface として復元して既存の実行経路から再生できるようにする。",
+    "summary": "デバッグ実行中の入力履歴を保存し、user-replayモードでは保存済み入力を既存のInputInterface経路から再生できるようにする。",
     "implementation": [
-      "入力履歴を program ID と iteration ごとの node=value レコードとして trace.txt に保存する",
-      "保存済み trace を SavedInputTraceIter として復元し、既存の InputInterface 登録経路へ接続する",
-      "user-replay を VS Code から Python debugger まで executionMode として伝播する",
-      "保存データを利用できない場合は commandFail として Python から VS Code まで失敗を伝播する",
-      "user-replay でも user-input と同じ入力 timeline 表示経路を利用する"
+      "入力履歴を保存・再生できる仕組みを追加する",
+      "user-replayをVS CodeからPythonまで伝播する",
+      "保存済み入力をDebuggerの既存入力経路へ接続する",
+      "Replay開始失敗をVS Codeまで伝播する",
+      "Replay入力も既存のtimeline表示で扱う"
     ]
   },
 
-  "flows": [
+  "nodes": [
     {
-      "id": "replay-execution",
-      "title": "Replay execution",
-      "description": "ユーザーが User Replay Mode を選択してから、保存済み入力が Debugger の入力源として登録されるまで。",
-      "steps": [
-        {
-          "id": "select-replay-mode",
-          "title": "User Replay Mode を選択する",
-          "description": "executionMode が未指定の場合の QuickPick に user-replay を追加する。",
-          "locationIds": [
-            "loc-config-quickpick"
-          ]
-        },
-        {
-          "id": "represent-replay-mode",
-          "title": "user-replay を extension 側の実行モードとして扱う",
-          "description": "TypeScript の ExecutionMode と debug configuration schema の両方で user-replay を許可する。",
-          "locationIds": [
-            "loc-engine-protocol-mode",
-            "loc-package-execution-mode-1",
-            "loc-package-execution-mode-2"
-          ]
-        },
-        {
-          "id": "accept-replay-request",
-          "title": "Python 側で user-replay request を受理する",
-          "description": "start request の executionMode validation に user-replay を追加する。",
-          "locationIds": [
-            "loc-python-request-mode"
-          ]
-        },
-        {
-          "id": "start-replay",
-          "title": "user-replay 起動時に保存済み入力をロードする",
-          "description": "session 層で user-replay を判定し、Debugger の復元 API を呼び出す。",
-          "locationIds": [
-            "loc-session-replay-start"
-          ]
-        },
-        {
-          "id": "load-replay-interface",
-          "title": "保存済み trace を InputInterface として登録する",
-          "description": "Debugger が SavedInputTraceIter をロードし、既存の register_input_interface() 経路へ渡す。",
-          "locationIds": [
-            "loc-debugger-load-input"
-          ]
-        },
-        {
-          "id": "restore-trace",
-          "title": "trace.txt を iteration 単位の入力へ復元する",
-          "description": "program ID を確認し、node=value レコードを InputNode へ復元する。",
-          "locationIds": [
-            "loc-trace-load"
-          ]
-        }
-      ]
+      "id": "saved-input-mechanism",
+      "title": "保存済み入力を再利用できる仕組みを作る",
+      "description": "保存済み入力履歴をInputInterfaceとして順次供給できるSavedInputTraceIterを追加する。",
+      "sourceRegionId": "region-saved-input-iterator"
+    },
+    {
+      "id": "load-saved-trace",
+      "title": "保存済みtraceを入力履歴へ復元する",
+      "description": "trace.txtを読み込み、program IDと各node=valueレコードを検証して内部バッファへ復元する。",
+      "rationale": "Replay専用の実行ループを作らず、既存のInputInterface経路を再利用するため。",
+      "watch": [
+        "traceファイルが存在しない場合はFailure",
+        "program IDが一致しない場合はFailure",
+        "壊れたレコードもFailure"
+      ],
+      "sourceRegionId": "region-load-saved-trace"
+    },
+    {
+      "id": "provide-replayed-input",
+      "title": "復元済み入力をiteration単位で供給する",
+      "description": "SavedInputTraceIterの内部バッファから次の入力集合を順番に返す。",
+      "sourceRegionId": "region-next-replayed-input"
+    },
+    {
+      "id": "save-input-trace",
+      "title": "現在の入力履歴をtrace.txtへ保存する",
+      "description": "program IDを先頭行に書き、各iterationの入力をnode=value形式で保存する。",
+      "watch": [
+        "書き込み失敗は例外として上位へ伝播せずログへ出す"
+      ],
+      "sourceRegionId": "region-save-trace"
+    },
+    {
+      "id": "save-on-abort",
+      "title": "デバッグ終了時に入力履歴を保存する",
+      "description": "Debuggerのabort処理を入力履歴の保存タイミングとして利用する。",
+      "sourceRegionId": "region-save-on-abort"
+    },
+    {
+      "id": "connect-replay-to-debugger",
+      "title": "保存済み入力をDebuggerの入力経路へ接続する",
+      "description": "SavedInputTraceIterの読み込みに成功したら、通常のInputInterfaceとしてregister_input_interface()へ渡す。",
+      "rationale": "user-inputとuser-replayで実行ループを分けず、入力源だけを差し替えるため。",
+      "sourceRegionId": "region-load-input-interface"
     },
 
     {
-      "id": "trace-persistence",
-      "title": "Trace persistence",
-      "description": "実行中に蓄積した入力履歴を、次回 replay 用の trace.txt として保存する。",
-      "steps": [
-        {
-          "id": "abort-session",
-          "title": "Debugger の abort 時に保存処理を開始する",
-          "description": "セッション終了を入力履歴の保存タイミングとして利用する。",
-          "locationIds": [
-            "loc-debugger-abort-save"
-          ]
-        },
-        {
-          "id": "delegate-save",
-          "title": "Debugger から InputTraceManager へ保存を委譲する",
-          "description": "現在の program ID と入力バッファを保存処理へ渡す。",
-          "locationIds": [
-            "loc-debugger-save-input"
-          ]
-        },
-        {
-          "id": "write-trace-file",
-          "title": "入力履歴を trace.txt へ直列化する",
-          "description": "program ID を先頭行に、各 iteration の入力を node=value 形式で保存する。",
-          "locationIds": [
-            "loc-trace-save"
-          ]
-        }
-      ]
+      "id": "select-user-replay",
+      "title": "UIからUser Replay Modeを選択できるようにする",
+      "description": "executionMode未指定時のQuickPickへUser Replay Modeを追加する。",
+      "sourceRegionId": "region-replay-quickpick"
+    },
+    {
+      "id": "allow-replay-in-debug-config",
+      "title": "debug configurationでuser-replayを指定できるようにする",
+      "description": "executionModeのschemaへuser-replayを追加する。",
+      "sourceRegionId": "region-debug-config-replay"
+    },
+    {
+      "id": "represent-replay-mode-ts",
+      "title": "TypeScriptでuser-replayを実行モードとして表現する",
+      "description": "ExecutionMode型へuser-replayを追加する。",
+      "sourceRegionId": "region-ts-execution-mode"
+    },
+    {
+      "id": "accept-replay-mode-python",
+      "title": "Python側でuser-replayを受理する",
+      "description": "start requestのexecutionMode Literalへuser-replayを追加する。",
+      "sourceRegionId": "region-python-execution-mode"
+    },
+    {
+      "id": "start-user-replay",
+      "title": "user-replay起動時に保存済み入力をロードする",
+      "description": "start requestがuser-replayならDebuggerのload_input_interface()を呼ぶ。",
+      "sourceRegionId": "region-start-user-replay"
     },
 
     {
-      "id": "replay-start-failure",
-      "title": "Replay start failure",
-      "description": "保存済み trace を利用できない場合のエラーを Python から VS Code UI まで伝播する。",
-      "steps": [
-        {
-          "id": "detect-invalid-trace",
-          "title": "保存済み trace の読み込み失敗を検出する",
-          "description": "ファイル不存在、program ID 不一致、不正レコードなどを Failure とする。",
-          "locationIds": [
-            "loc-trace-load"
-          ]
-        },
-        {
-          "id": "propagate-debugger-failure",
-          "title": "Debugger API から Failure を返す",
-          "description": "SavedInputTraceIter の読み込み失敗を呼び出し側へそのまま返す。",
-          "locationIds": [
-            "loc-debugger-load-input"
-          ]
-        },
-        {
-          "id": "convert-command-fail",
-          "title": "Failure を commandFail response へ変換する",
-          "description": "user-replay の起動を中止し、protocol 上の失敗応答へ変換する。",
-          "locationIds": [
-            "loc-session-replay-start"
-          ]
-        },
-        {
-          "id": "return-engine-error",
-          "title": "engine が commandFail を文字列の失敗結果として返す",
-          "description": "正常な start response と失敗文字列を union として adapter へ返す。",
-          "locationIds": [
-            "loc-engine-start-failure",
-            "loc-engine-parse-failure"
-          ]
-        },
-        {
-          "id": "show-vscode-error",
-          "title": "VS Code 上で起動失敗を通知する",
-          "description": "DAP error response に加えて showErrorMessage() でもユーザーへ通知する。",
-          "locationIds": [
-            "loc-adapter-start-error"
-          ]
-        }
-      ]
+      "id": "return-replay-start-failure",
+      "title": "Replay開始失敗をcommandFailとして返す",
+      "description": "保存済み入力を利用できない場合、通常起動を続けずcommandFail responseへ変換する。",
+      "sourceRegionId": "region-start-user-replay"
+    },
+    {
+      "id": "propagate-command-fail",
+      "title": "PythonのcommandFailをengineの失敗結果として伝播する",
+      "description": "正常なstart responseと失敗時のmessageを区別してadapterへ返す。",
+      "sourceRegionId": "region-engine-start-failure"
+    },
+    {
+      "id": "show-start-error",
+      "title": "Replay開始失敗をVS Codeへ表示する",
+      "description": "engineの失敗結果をDAP error responseとVS Code通知としてユーザーへ表示する。",
+      "sourceRegionId": "region-show-start-error"
     },
 
     {
-      "id": "replay-input-state",
-      "title": "Replay input state",
-      "description": "user-replay を既存の user-input と同様に入力履歴を持つ実行モードとして扱う。",
-      "steps": [
-        {
-          "id": "centralize-input-active-state",
-          "title": "入力 interface の active 判定を Debugger に集約する",
-          "description": "session 固有の状態ではなく Debugger に登録された InputInterface を基準に判定する。",
-          "locationIds": [
-            "loc-session-input-active"
-          ]
-        },
-        {
-          "id": "load-replay-timeline",
-          "title": "user-replay でも timeline を取得する",
-          "description": "user-input と同じ timeline window 取得経路へ user-replay を含める。",
-          "locationIds": [
-            "loc-adapter-replay-timeline"
-          ]
-        }
-      ]
+      "id": "centralize-input-active-state",
+      "title": "入力interfaceのactive判定をDebuggerへ集約する",
+      "description": "session固有の入力状態ではなくDebugger側の登録状態を参照する。",
+      "sourceRegionId": "region-input-active"
+    },
+    {
+      "id": "show-replay-timeline",
+      "title": "user-replayでも入力timelineを表示する",
+      "description": "user-inputと同じtimeline取得経路へuser-replayを含める。",
+      "sourceRegionId": "region-replay-timeline"
     }
   ],
 
-  "locations": [
+  "readingDependencies": [
     {
-      "id": "loc-trace-load",
-      "file": "python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py",
-      "startLine": 1,
-      "endLine": 67
+      "before": "saved-input-mechanism",
+      "after": "load-saved-trace"
     },
     {
-      "id": "loc-trace-save",
-      "file": "python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py",
-      "startLine": 80,
-      "endLine": 100
-    },
-
-    {
-      "id": "loc-debugger-abort-save",
-      "file": "python/emfrp_debugger/emfrp_bridge/core/debugger.py",
-      "startLine": 50,
-      "endLine": 59
+      "before": "saved-input-mechanism",
+      "after": "save-input-trace"
     },
     {
-      "id": "loc-debugger-load-input",
-      "file": "python/emfrp_debugger/emfrp_bridge/core/debugger.py",
-      "startLine": 612,
-      "endLine": 625
+      "before": "load-saved-trace",
+      "after": "provide-replayed-input"
     },
     {
-      "id": "loc-debugger-save-input",
-      "file": "python/emfrp_debugger/emfrp_bridge/core/debugger.py",
-      "startLine": 626,
-      "endLine": 632
+      "before": "save-input-trace",
+      "after": "save-on-abort"
+    },
+    {
+      "before": "load-saved-trace",
+      "after": "connect-replay-to-debugger"
     },
 
     {
-      "id": "loc-python-request-mode",
+      "before": "select-user-replay",
+      "after": "represent-replay-mode-ts"
+    },
+    {
+      "before": "allow-replay-in-debug-config",
+      "after": "represent-replay-mode-ts"
+    },
+    {
+      "before": "represent-replay-mode-ts",
+      "after": "accept-replay-mode-python"
+    },
+    {
+      "before": "accept-replay-mode-python",
+      "after": "start-user-replay"
+    },
+    {
+      "before": "connect-replay-to-debugger",
+      "after": "start-user-replay"
+    },
+
+    {
+      "before": "load-saved-trace",
+      "after": "return-replay-start-failure"
+    },
+    {
+      "before": "return-replay-start-failure",
+      "after": "propagate-command-fail"
+    },
+    {
+      "before": "propagate-command-fail",
+      "after": "show-start-error"
+    },
+
+    {
+      "before": "connect-replay-to-debugger",
+      "after": "centralize-input-active-state"
+    },
+    {
+      "before": "centralize-input-active-state",
+      "after": "show-replay-timeline"
+    }
+  ],
+
+  "sourceRegions": [
+    {
+      "id": "region-saved-input-iterator",
+      "file": "python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py",
+      "target": {
+        "startLine": 14,
+        "endLine": 67
+      }
+    },
+    {
+      "id": "region-load-saved-trace",
+      "file": "python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py",
+      "target": {
+        "startLine": 30,
+        "endLine": 67
+      }
+    },
+    {
+      "id": "region-next-replayed-input",
+      "file": "python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py",
+      "target": {
+        "startLine": 19,
+        "endLine": 24
+      }
+    },
+    {
+      "id": "region-save-trace",
+      "file": "python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py",
+      "target": {
+        "startLine": 80,
+        "endLine": 100
+      }
+    },
+
+    {
+      "id": "region-save-on-abort",
+      "file": "python/emfrp_debugger/emfrp_bridge/core/debugger.py",
+      "target": {
+        "startLine": 50,
+        "endLine": 59
+      }
+    },
+    {
+      "id": "region-load-input-interface",
+      "file": "python/emfrp_debugger/emfrp_bridge/core/debugger.py",
+      "target": {
+        "startLine": 612,
+        "endLine": 625
+      }
+    },
+
+    {
+      "id": "region-python-execution-mode",
       "file": "python/emfrp_debugger/vscode_adapter/request.py",
-      "startLine": 15,
-      "endLine": 21
+      "base": {
+        "startLine": 15,
+        "endLine": 15
+      },
+      "target": {
+        "startLine": 15,
+        "endLine": 15
+      }
     },
 
     {
-      "id": "loc-session-replay-start",
+      "id": "region-start-user-replay",
       "file": "python/emfrp_debugger/vscode_adapter/vscode_debug_session.py",
-      "startLine": 51,
-      "endLine": 75
+      "target": {
+        "startLine": 51,
+        "endLine": 75
+      }
     },
     {
-      "id": "loc-session-terminate-loop",
+      "id": "region-input-active",
       "file": "python/emfrp_debugger/vscode_adapter/vscode_debug_session.py",
-      "startLine": 104,
-      "endLine": 110
-    },
-    {
-      "id": "loc-session-input-active",
-      "file": "python/emfrp_debugger/vscode_adapter/vscode_debug_session.py",
-      "startLine": 283,
-      "endLine": 289
+      "base": {
+        "startLine": 267,
+        "endLine": 274
+      },
+      "target": {
+        "startLine": 283,
+        "endLine": 289
+      }
     },
 
     {
-      "id": "loc-package-execution-mode-1",
+      "id": "region-debug-config-replay",
       "file": "vscode-extension/emdb/package.json",
-      "startLine": 228,
-      "endLine": 239
-    },
-    {
-      "id": "loc-package-execution-mode-2",
-      "file": "vscode-extension/emdb/package.json",
-      "startLine": 284,
-      "endLine": 295
-    },
-
-    {
-      "id": "loc-adapter-start-error",
-      "file": "vscode-extension/emdb/src/provider/emdbAdapter.ts",
-      "startLine": 91,
-      "endLine": 97
-    },
-    {
-      "id": "loc-adapter-replay-timeline",
-      "file": "vscode-extension/emdb/src/provider/emdbAdapter.ts",
-      "startLine": 525,
-      "endLine": 531
+      "base": {
+        "startLine": 228,
+        "endLine": 293
+      },
+      "target": {
+        "startLine": 228,
+        "endLine": 295
+      }
     },
 
     {
-      "id": "loc-config-quickpick",
+      "id": "region-show-start-error",
+      "file": "vscode-extension/emdb/src/provider/emdbAdapter.ts",
+      "target": {
+        "startLine": 91,
+        "endLine": 97
+      }
+    },
+    {
+      "id": "region-replay-timeline",
+      "file": "vscode-extension/emdb/src/provider/emdbAdapter.ts",
+      "base": {
+        "startLine": 524,
+        "endLine": 524
+      },
+      "target": {
+        "startLine": 525,
+        "endLine": 525
+      }
+    },
+
+    {
+      "id": "region-replay-quickpick",
       "file": "vscode-extension/emdb/src/provider/emdbConfigurationProvider.ts",
-      "startLine": 27,
-      "endLine": 34
+      "target": {
+        "startLine": 27,
+        "endLine": 34
+      }
     },
 
     {
-      "id": "loc-engine-start-failure",
+      "id": "region-engine-start-failure",
       "file": "vscode-extension/emdb/src/provider/engine.ts",
-      "startLine": 68,
-      "endLine": 82
-    },
-    {
-      "id": "loc-engine-parse-failure",
-      "file": "vscode-extension/emdb/src/provider/engine.ts",
-      "startLine": 86,
-      "endLine": 92
+      "base": {
+        "startLine": 68,
+        "endLine": 91
+      },
+      "target": {
+        "startLine": 68,
+        "endLine": 92
+      }
     },
 
     {
-      "id": "loc-engine-protocol-mode",
+      "id": "region-ts-execution-mode",
       "file": "vscode-extension/emdb/src/provider/engineProtocol.ts",
-      "startLine": 98,
-      "endLine": 101
-    }
-  ],
-
-  "explanations": [
-    {
-      "locationId": "loc-trace-load",
-      "title": "保存済み trace を再生可能な入力源へ復元",
-      "role": "trace.txt の内容を SavedInputTraceIter の内部バッファへ読み込み、既存の InputInterface.next() から iteration 単位で再生できる状態にする。",
-      "why": "Replay 専用の実行ループを追加せず、既存の InputInterface 抽象と Debugger の入力処理を再利用するため。",
-      "watch": [
-        "trace の先頭に保存された program ID と現在の program を照合する",
-        "ファイル不存在、空データ、別 program、不正なレコードは Failure とする"
-      ]
-    },
-    {
-      "locationId": "loc-trace-save",
-      "title": "現在の入力履歴を次回 replay 用に保存",
-      "role": "実行中に蓄積した入力バッファを program ID と node=value レコードへ直列化して trace.txt に保存する。",
-      "why": "次回起動時に同じ入力系列を SavedInputTraceIter から再現できる永続形式を用意するため。",
-      "watch": [
-        "書き込み失敗は例外として上位へ伝播せず標準出力へ記録する"
-      ]
-    },
-
-    {
-      "locationId": "loc-debugger-abort-save",
-      "title": "セッション終了を入力履歴の保存タイミングにする",
-      "role": "Debugger の abort 処理に入力履歴の保存を組み込み、終了時点の入力系列を次回 replay 用に残す。",
-      "why": "デバッグセッションのライフサイクル境界で保存することで、UIやprotocol層に永続化責務を持たせないため。"
-    },
-    {
-      "locationId": "loc-debugger-load-input",
-      "title": "保存済み入力を既存の Debugger 入力経路へ接続",
-      "role": "SavedInputTraceIter の読み込みに成功した後、通常の InputInterface と同じ register_input_interface() 経路へ登録する。",
-      "why": "user-input と user-replay で実行ループを分岐させず、入力源だけを差し替える構造にするため。",
-      "watch": [
-        "読み込み Failure は登録せず呼び出し側へ返す"
-      ]
-    },
-    {
-      "locationId": "loc-debugger-save-input",
-      "title": "入力履歴の永続化を InputTraceManager へ委譲",
-      "role": "Debugger が保持する現在の program 情報と入力履歴を保存処理へ接続する。",
-      "why": "Debugger は保存タイミングを管理し、具体的な直列化形式は InputTraceManager に閉じ込めるため。"
-    },
-
-    {
-      "locationId": "loc-python-request-mode",
-      "title": "Python protocol で user-replay を受理",
-      "role": "VS Code から送信される start request の executionMode として user-replay をvalidation可能にする。",
-      "why": "TypeScript 側で追加した新しい実行モードを Python 側の型検証で拒否しないため。"
-    },
-
-    {
-      "locationId": "loc-session-replay-start",
-      "title": "user-replay 起動を保存済み入力の復元へ接続",
-      "role": "start request が user-replay の場合に Debugger の load_input_interface() を呼び、失敗時は commandFail を返して起動を中止する。",
-      "why": "protocol 層を、executionMode と Debugger の具体的な起動処理を接続する境界として利用するため。",
-      "watch": [
-        "保存データを利用できない場合は通常起動へfallbackせず明示的に失敗する"
-      ]
-    },
-    {
-      "locationId": "loc-session-terminate-loop",
-      "title": "terminate 後に request loop を終了",
-      "role": "terminate の success response を返した後、session が追加 request を処理し続けないよう request loop を終了する。",
-      "watch": [
-        "replay 機能とは直接独立した変更だが、同じ変更差分に含まれている"
-      ]
-    },
-    {
-      "locationId": "loc-session-input-active",
-      "title": "入力状態判定を Debugger の登録状態へ統一",
-      "role": "user-input と user-replay のどちらでも、Debugger に InputInterface が登録されているかを共通の active 判定として利用する。",
-      "why": "session が特定の入力方式を直接知る必要をなくし、入力源の違いを Debugger 内へ閉じ込めるため。"
-    },
-
-    {
-      "locationId": "loc-package-execution-mode-1",
-      "title": "debug configuration で user-replay を許可",
-      "role": "VS Code の debug configuration schema に user-replay を追加し、設定ファイルから新しい実行モードを指定できるようにする。",
-      "watch": [
-        "enum と enumDescriptions の並びを対応させる"
-      ]
-    },
-    {
-      "locationId": "loc-package-execution-mode-2",
-      "title": "重複する configuration schema を同期",
-      "role": "もう一方の debug configuration 定義にも同じ user-replay option を追加する。",
-      "why": "configuration 種別によって executionMode の許容値が異なる状態を防ぐため。"
-    },
-
-    {
-      "locationId": "loc-adapter-start-error",
-      "title": "engine 起動失敗を VS Code UI へ通知",
-      "role": "engine.startRequest() が文字列の失敗結果を返した場合、DAP error response と VS Code の error message の両方へ変換する。",
-      "why": "replay 用 trace が存在しないなどの起動失敗をユーザーから直接確認できるようにするため。"
-    },
-    {
-      "locationId": "loc-adapter-replay-timeline",
-      "title": "replay 入力も timeline 表示の対象にする",
-      "role": "user-replay を user-input と同じ入力履歴表示経路へ含める。",
-      "why": "再生された入力も timeline 上では通常のユーザー入力履歴と同様に確認できるため。"
-    },
-
-    {
-      "locationId": "loc-config-quickpick",
-      "title": "起動モード選択 UI に User Replay Mode を追加",
-      "role": "executionMode が設定されていない起動時に、ユーザーが最後の入力履歴を使うモードを選択できるようにする。",
-      "why": "user-replay を設定ファイルだけでなく対話的な起動フローからも利用できるようにするため。"
-    },
-
-    {
-      "locationId": "loc-engine-start-failure",
-      "title": "Python の commandFail を engine の失敗結果へ変換",
-      "role": "start response が正常な start でない場合を判別し、commandFail の message を adapter へ返す。",
-      "why": "Python 側の replay 復元失敗を TypeScript の起動処理まで失わずに伝播するため。",
-      "watch": [
-        "成功時は EmdbResponseStartParam、失敗時は string という union になる"
-      ]
-    },
-    {
-      "locationId": "loc-engine-parse-failure",
-      "title": "response parse 失敗を正常値に偽装しない",
-      "role": "start response の解釈に失敗した場合、空グラフではなく明示的な失敗文字列を返す。",
-      "why": "異常系を正常な空データとして扱うと adapter が起動成功と誤認するため。"
-    },
-
-    {
-      "locationId": "loc-engine-protocol-mode",
-      "title": "extension 内の ExecutionMode 型に user-replay を追加",
-      "role": "VS Code extension 内で user-replay を正式な executionMode として扱えるよう型定義を拡張する。",
-      "why": "QuickPick、engine request、Python request まで同じ executionMode 集合を共有するため。"
+      "base": {
+        "startLine": 98,
+        "endLine": 98
+      },
+      "target": {
+        "startLine": 98,
+        "endLine": 98
+      }
     }
   ]
 }
