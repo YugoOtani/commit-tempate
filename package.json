@@ -17,6 +17,7 @@
   ],
   "activationEvents": [
     "onCommand:aiChangeReview.openReview",
+    "onCommand:aiChangeReview.openFullSource",
     "onView:aiChangeReview.flowNavigator"
   ],
   "main": "./out/src/extension.js",
@@ -36,8 +37,22 @@
         "command": "aiChangeReview.openReview",
         "title": "Open Review",
         "category": "AI Change Review"
+      },
+      {
+        "command": "aiChangeReview.openFullSource",
+        "title": "Open Full Source",
+        "category": "AI Change Review"
       }
     ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "aiChangeReview.openFullSource",
+          "when": "resourceScheme == ai-change-review-git",
+          "group": "navigation"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {

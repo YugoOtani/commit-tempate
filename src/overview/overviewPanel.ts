@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import type { ChangeReview } from "../review/schema";
 import { renderOverview } from "./renderOverview";
 
-type OpenFlowHandler = (flowId: string) => void;
+type OpenFlowHandler = (flowId: string) => void | Promise<void>;
 
 export function openOverviewPanel(review: ChangeReview, onOpenFlow: OpenFlowHandler): void {
   const panel = vscode.window.createWebviewPanel(
@@ -14,14 +14,14 @@ export function openOverviewPanel(review: ChangeReview, onOpenFlow: OpenFlowHand
   );
 
   panel.webview.html = renderOverview(review, randomBytes(16).toString("hex"));
-  panel.webview.onDidReceiveMessage((message: unknown) => {
+  panel.webview.onDidReceiveMessage(async (message: unknown) => {
     if (!isOpenFlowMessage(message)) {
       return;
     }
     if (!review.flows.some((flow) => flow.id === message.flowId)) {
       return;
     }
-    onOpenFlow(message.flowId);
+    await onOpenFlow(message.flowId);
   });
 }
 

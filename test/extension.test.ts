@@ -93,7 +93,7 @@ it("Flow StepからGit Diffを開き、current表示・highlight・Explanation�
   let treeDataProvider: TreeDataProvider | undefined;
   let contentProvider: ContentProvider | undefined;
   let codeLensProvider: CodeLensProvider | undefined;
-  let messageHandler: ((message: unknown) => void) | undefined;
+  let messageHandler: ((message: unknown) => void | Promise<void>) | undefined;
   let webviewHtml = "";
   const informationMessages: Array<{
     message: string;
@@ -117,6 +117,7 @@ it("Flow StepからGit Diffを開き、current表示・highlight・Explanation�
     baseContent: string;
     targetContent: string;
   }> = [];
+  const fullSourceDocuments: MockUri[] = [];
 
   const childProcessMock = {
     execFile(
@@ -278,7 +279,7 @@ it("Flow StepからGit Diffを開き、current表示・highlight・Explanation�
             set html(value: string) {
               webviewHtml = value;
             },
-            onDidReceiveMessage(handler: (message: unknown) => void) {
+            onDidReceiveMessage(handler: (message: unknown) => void | Promise<void>) {
               messageHandler = handler;
               return { dispose() {} };
             },
@@ -294,8 +295,32 @@ it("Flow StepからGit Diffを開き、current表示・highlight・Explanation�
       async showErrorMessage(message: string) {
         assert.fail(message);
       },
-      async showTextDocument() {
-        assert.fail("Phase 6では通常Source Editorを開かない");
+      async showTextDocument(uri: MockUri) {
+        const provider = contentProvider;
+        assert.ok(provider);
+        const source = provider.provideTextDocumentContent(uri);
+        const lines = source.split(/\r?\n/);
+        const editor = {
+          document: {
+            uri,
+            lineCount: lines.length,
+            lineAt(line: number) {
+              return { text: lines[line] };
+            },
+          },
+          revealRange(range: MockRange, revealType: number) {
+            revealedRanges.push({ ...range, revealType });
+          },
+          setDecorations(_decorationType: unknown, ranges: MockRange[]) {
+            decorationCalls.push({
+              uri: uri.toString(),
+              ranges: ranges.map((range) => ({ ...range })),
+            });
+          },
+        };
+        fullSourceDocuments.push(uri);
+        visibleTextEditors.splice(0, visibleTextEditors.length, editor);
+        return editor;
       },
     },
   };
@@ -401,6 +426,27 @@ it("Flow StepからGit Diffを開き、current表示・highlight・Explanation�
       },
     });
 
+    const openFullSource = commandHandlers.get("aiChangeReview.openFullSource");
+    assert.ok(openFullSource);
+    await openFullSource(diffCommands[0].right);
+    assert.deepEqual(fullSourceDocuments, [diffCommands[0].right]);
+    assert.deepEqual(revealedRanges.at(-1), {
+      startLine: 14,
+      startCharacter: 0,
+      endLine: 20,
+      endCharacter: "target line 21".length,
+      revealType: 1,
+    });
+    assert.deepEqual(decorationCalls.at(-1), {
+      uri: diffCommands[0].right.toString(),
+      ranges: [{
+        startLine: 14,
+        startCharacter: 0,
+        endLine: 20,
+        endCharacter: "target line 21".length,
+      }],
+    });
+
     replaySteps = treeDataProvider.getChildren(flows[0]);
     assert.match(treeDataProvider.getTreeItem(replaySteps[0]).label, /^✓ /);
     assert.match(treeDataProvider.getTreeItem(replaySteps[1]).label, /^✓ /);
@@ -427,7 +473,6 @@ it("Flow StepからGit Diffを開き、current表示・highlight・Explanation�
       endCharacter: "target line 239".length,
       revealType: 1,
     });
-    assert.deepEqual(decorationCalls.at(-2)?.ranges, []);
     assert.equal(decorationCalls.at(-1)?.uri, diffCommands.at(-1)?.right.toString());
 
     const packageCodeLenses = codeLensProvider.provideCodeLenses(
@@ -469,11 +514,25 @@ it("Flow StepからGit Diffを開き、current表示・highlight・Explanation�
 
     assert.ok(gitCalls.some(({ args }) => args[0] === "cat-file"));
 
-    messageHandler({ type: "openFlow", flowId: "replay-execution" });
+    const diffCountBeforeOpenFlow = diffCommands.length;
+    await messageHandler({ type: "openFlow", flowId: "replay-execution" });
     assert.deepEqual(outputLines, ["openFlowを受信: replay-execution"]);
-    assert.deepEqual(informationMessages.at(-1), {
-      message: "Flowを受信しました: replay-execution",
-      options: undefined,
+    assert.equal(diffCommands.length, diffCountBeforeOpenFlow + 1);
+    assert.equal(
+      diffCommands.at(-1)?.right.path,
+      "/vscode-extension/emdb/src/provider/emdbConfigurationProvider.ts",
+    );
+    const reopenedFlows = treeDataProvider.getChildren();
+    assert.equal(treeDataProvider.getTreeItem(reopenedFlows[0]).description, "current flow");
+    const reopenedSteps = treeDataProvider.getChildren(reopenedFlows[0]);
+    assert.match(treeDataProvider.getTreeItem(reopenedSteps[0]).label, /^→ /);
+    assert.match(treeDataProvider.getTreeItem(reopenedSteps[1]).label, /^○ /);
+    assert.deepEqual(revealedRanges.at(-1), {
+      startLine: 26,
+      startCharacter: 0,
+      endLine: 33,
+      endCharacter: "target line 34".length,
+      revealType: 1,
     });
   } finally {
     moduleRuntime._load = originalLoad;

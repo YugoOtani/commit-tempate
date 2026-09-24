@@ -5,13 +5,15 @@ import type { GitDiffContentProvider } from "./diffProvider";
 import type { ExplanationCodeLensProvider } from "./explanation";
 import { readRevisionFileContents } from "./gitRevision";
 
+export const openFullSourceCommand = "aiChangeReview.openFullSource";
+
 export async function openDiffLocation(
   review: ChangeReview,
   location: SourceLocation,
   contentProvider: GitDiffContentProvider,
   highlighter: SourceLocationHighlighter,
   explanationProvider: ExplanationCodeLensProvider,
-): Promise<void> {
+): Promise<vscode.Uri> {
   const workspaceRoots = vscode.workspace.workspaceFolders?.map(
     (workspaceFolder) => workspaceFolder.uri.fsPath,
   ) ?? [];
@@ -51,6 +53,21 @@ export async function openDiffLocation(
   }
 
   const range = createLocationRange(editor.document, location);
+  editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+  highlighter.highlight(editor, range);
+  return documents.target;
+}
+
+export async function openFullSourceLocation(
+  documentUri: vscode.Uri,
+  location: SourceLocation,
+  highlighter: SourceLocationHighlighter,
+): Promise<void> {
+  const editor = await vscode.window.showTextDocument(documentUri, {
+    preview: true,
+  });
+  const range = createLocationRange(editor.document, location);
+
   editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
   highlighter.highlight(editor, range);
 }

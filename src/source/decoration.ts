@@ -18,7 +18,7 @@ export class SourceLocationHighlighter implements vscode.Disposable {
 
   highlight(editor: vscode.TextEditor, range: vscode.Range): void {
     if (this.currentEditor && this.currentEditor !== editor) {
-      this.currentEditor.setDecorations(this.decorationType, []);
+      this.clearCurrentEditor();
     }
 
     editor.setDecorations(this.decorationType, [range]);
@@ -26,7 +26,16 @@ export class SourceLocationHighlighter implements vscode.Disposable {
   }
 
   clear(): void {
-    this.currentEditor?.setDecorations(this.decorationType, []);
+    this.clearCurrentEditor();
+  }
+
+  private clearCurrentEditor(): void {
+    if (
+      this.currentEditor
+      && vscode.window.visibleTextEditors.includes(this.currentEditor)
+    ) {
+      this.currentEditor.setDecorations(this.decorationType, []);
+    }
     this.currentEditor = undefined;
   }
 
