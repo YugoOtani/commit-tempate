@@ -1,0 +1,59 @@
+{
+  "name": "ai-change-review",
+  "displayName": "AI Change Review",
+  "description": "AIが実装した変更をFlow順に理解するためのVS Code Extension",
+  "version": "0.0.1",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "files": [
+    "out",
+    "fixtures",
+    "resources"
+  ],
+  "activationEvents": [
+    "onCommand:aiChangeReview.openReview",
+    "onView:aiChangeReview.flowNavigator"
+  ],
+  "main": "./out/src/extension.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "check": "tsc --noEmit -p .",
+    "test": "npm run build && node --test out/test/**/*.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.9.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiChangeReview.openReview",
+        "title": "Open Review",
+        "category": "AI Change Review"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aiChangeReview",
+          "title": "AI Change Review",
+          "icon": "resources/review.svg"
+        }
+      ]
+    },
+    "views": {
+      "aiChangeReview": [
+        {
+          "id": "aiChangeReview.flowNavigator",
+          "name": "Flow Navigator"
+        }
+      ]
+    }
+  }
+}
