@@ -1,5 +1,51 @@
 import * as vscode from "vscode";
-import type { SourceLocation } from "../review/schema";
+import type { ChangeReview, SourceLocation } from "../review/schema";
+import type { SourceLocationHighlighter } from "./decoration";
+import type { GitDiffContentProvider } from "./diffProvider";
+import { readRevisionFileContents } from "./gitRevision";
+
+export async function openDiffLocation(
+  review: ChangeReview,
+  location: SourceLocation,
+  contentProvider: GitDiffContentProvider,
+  highlighter: SourceLocationHighlighter,
+): Promise<void> {
+  const workspaceRoots = vscode.workspace.workspaceFolders?.map(
+    (workspaceFolder) => workspaceFolder.uri.fsPath,
+  ) ?? [];
+  const contents = await readRevisionFileContents(
+    workspaceRoots,
+    review.change.baseRevision,
+    review.change.targetRevision,
+    location.file,
+  );
+  const documents = contentProvider.createDocuments(
+    location.file,
+    review.change.baseRevision,
+    review.change.targetRevision,
+    contents.baseContent,
+    contents.targetContent,
+  );
+
+  await vscode.commands.executeCommand(
+    "vscode.diff",
+    documents.base,
+    documents.target,
+    diffTitle(review, location),
+    { preview: true },
+  );
+
+  const editor = vscode.window.visibleTextEditors.find(
+    (candidate) => candidate.document.uri.toString() === documents.target.toString(),
+  );
+  if (!editor) {
+    throw new Error("Git Diffのtarget側Editorを特定できません。");
+  }
+
+  const range = createLocationRange(editor.document, location);
+  editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+  highlighter.highlight(editor, range);
+}
 
 export async function openSourceLocation(location: SourceLocation): Promise<void> {
   const uri = await resolveSourceUri(location.file);
@@ -31,4 +77,28 @@ async function resolveSourceUri(file: string): Promise<vscode.Uri> {
   }
 
   throw new Error(`SourceLocationのファイルがワークスペース内に見つかりません: ${file}`);
+}
+
+function createLocationRange(
+  document: vscode.TextDocument,
+  location: SourceLocation,
+): vscode.Range {
+  if (location.startLine > document.lineCount) {
+    throw new Error(
+      `SourceLocationの開始行がtargetRevisionの行数を超えています: ${location.file}:${location.startLine}`,
+    );
+  }
+
+  const startLine = location.startLine - 1;
+  const endLine = Math.min(location.endLine, document.lineCount) - 1;
+  const endCharacter = document.lineAt(endLine).text.length;
+  return new vscode.Range(startLine, 0, endLine, endCharacter);
+}
+
+function diffTitle(review: ChangeReview, location: SourceLocation): string {
+  return `${location.file} (${shortRevision(review.change.baseRevision)} ↔ ${shortRevision(review.change.targetRevision)})`;
+}
+
+function shortRevision(revision: string): string {
+  return revision.length > 8 ? revision.slice(0, 8) : revision;
 }

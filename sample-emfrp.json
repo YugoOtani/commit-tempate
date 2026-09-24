@@ -3,7 +3,7 @@
     "id": "emfrp-user-replay",
     "title": "最後に与えた時変値を自動で記録・再生する",
     "request": "最後に与えた時変値を保存し、次回のデバッグ実行時にその入力履歴を再利用できるようにする",
-    "baseRevision": "<BASE_REVISION>",
+    "baseRevision": "3ab8547^",
     "targetRevision": "3ab8547"
   },
 

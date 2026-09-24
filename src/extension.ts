@@ -7,25 +7,34 @@ import {
 import { openOverviewPanel } from "./overview/overviewPanel";
 import { loadBundledReview } from "./review/loader";
 import type { ChangeReview, SourceLocation } from "./review/schema";
-import { openSourceLocation } from "./source/sourceNavigation";
+import { SourceLocationHighlighter } from "./source/decoration";
+import {
+  GitDiffContentProvider,
+  gitDiffDocumentScheme,
+} from "./source/diffProvider";
+import { openDiffLocation } from "./source/sourceNavigation";
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel("AI Change Review");
   const flowTreeDataProvider = new FlowTreeDataProvider();
+  const diffContentProvider = new GitDiffContentProvider();
+  const highlighter = new SourceLocationHighlighter();
   let review: ChangeReview | undefined;
   const flowTree = vscode.window.createTreeView("aiChangeReview.flowNavigator", {
     treeDataProvider: flowTreeDataProvider,
   });
   const selectFlow = vscode.commands.registerCommand(selectFlowCommand, (flowId: unknown) => {
     if (typeof flowId === "string") {
-      flowTreeDataProvider.selectFlow(flowId);
+      if (flowTreeDataProvider.selectFlow(flowId)) {
+        highlighter.clear();
+      }
     }
   });
   const selectStep = vscode.commands.registerCommand(
     selectStepCommand,
     async (flowId: unknown, stepId: unknown, locationId: unknown) => {
       if (typeof flowId === "string" && typeof stepId === "string") {
-        if (!flowTreeDataProvider.selectStep(flowId, stepId)) {
+        if (!review) {
           return;
         }
 
@@ -40,11 +49,12 @@ export function activate(context: vscode.ExtensionContext): void {
         }
 
         try {
-          await openSourceLocation(location);
+          await openDiffLocation(review, location, diffContentProvider, highlighter);
+          flowTreeDataProvider.selectStep(flowId, stepId);
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error);
           output.appendLine(detail);
-          await vscode.window.showErrorMessage(`SourceLocationを開けません: ${detail}`);
+          await vscode.window.showErrorMessage(`Git Diffを開けません: ${detail}`);
         }
       }
     },
@@ -52,6 +62,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const openReview = vscode.commands.registerCommand("aiChangeReview.openReview", async () => {
     try {
       review = await loadBundledReview(context.extensionUri);
+      highlighter.clear();
       flowTreeDataProvider.setReview(review);
       openOverviewPanel(review, (flowId) => {
         output.appendLine(`openFlowを受信: ${flowId}`);
@@ -67,6 +78,12 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     output,
     flowTreeDataProvider,
+    diffContentProvider,
+    highlighter,
+    vscode.workspace.registerTextDocumentContentProvider(
+      gitDiffDocumentScheme,
+      diffContentProvider,
+    ),
     flowTree,
     selectFlow,
     selectStep,
