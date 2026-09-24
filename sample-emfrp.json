@@ -1,204 +1,431 @@
 {
-  "schemaVersion": 1,
-  "repository": {
-    "fullName": "YugoOtani/EmfrpDebugger",
-    "url": "https://github.com/YugoOtani/EmfrpDebugger"
+  "change": {
+    "id": "emfrp-user-replay",
+    "title": "最後に与えた時変値を自動で記録・再生する",
+    "request": "最後に与えた時変値を保存し、次回のデバッグ実行時にその入力履歴を再利用できるようにする",
+    "baseRevision": "<BASE_REVISION>",
+    "targetRevision": "3ab8547"
   },
-  "commit": {
-    "sha": "3ab8547a263fac763cf93158d42275096c559f65",
-    "shortSha": "3ab8547",
-    "message": "最後に与えた時変値を自動で記録する機能を実装",
-    "author": {
-      "login": "YugoOtani",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/107762166?v=4"
-    },
-    "createdAt": "2025-11-26T07:55:39Z",
-    "url": "https://github.com/YugoOtani/EmfrpDebugger/commit/3ab8547a263fac763cf93158d42275096c559f65",
-    "summary": {
-      "filesChanged": 9,
-      "additions": 129,
-      "deletions": 22
-    }
-  },
-  "changeUnits": [
-    {
-      "id": "cu-1",
-      "title": "入力履歴を保存・再生できるようにする",
-      "intent": "実行時に蓄積した入力時変値をファイルへ保存し、次回セッションでInputInterfaceとして読み戻せるようにする。",
-      "files": [
-        "python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py"
-      ],
-      "evidence": [
-        "SavedInputTraceIter が trace.txt を読み込み、InputInterface.next() で再生する",
-        "InputTraceManager.save_trace() が現在の入力履歴を trace.txt に保存する"
-      ],
-      "risk": "medium"
-    },
-    {
-      "id": "cu-2",
-      "title": "Debuggerのライフサイクルに保存・復元を接続する",
-      "intent": "Debugger終了時に入力履歴を保存し、replay起動時には保存済み履歴をInputInterfaceとして登録する。",
-      "files": [
-        "python/emfrp_debugger/emfrp_bridge/core/debugger.py"
-      ],
-      "dependsOn": [
-        "cu-1"
-      ],
-      "risk": "medium"
-    },
-    {
-      "id": "cu-3",
-      "title": "user-replay実行モードをPython側プロトコルへ追加する",
-      "intent": "VSCodeからuser-replayを指定できるようにし、保存データがない場合はcommandFailを返す。",
-      "files": [
-        "python/emfrp_debugger/vscode_adapter/request.py",
-        "python/emfrp_debugger/vscode_adapter/vscode_debug_session.py"
-      ],
-      "dependsOn": [
-        "cu-2"
-      ],
-      "risk": "medium"
-    },
-    {
-      "id": "cu-4",
-      "title": "VSCode UI・TypeScript protocolからuser-replayを選択できるようにする",
-      "intent": "設定スキーマ、起動モード選択UI、TypeScript型、engineエラー処理をuser-replayへ対応させる。",
-      "files": [
-        "vscode-extension/emdb/package.json",
-        "vscode-extension/emdb/src/provider/emdbAdapter.ts",
-        "vscode-extension/emdb/src/provider/emdbConfigurationProvider.ts",
-        "vscode-extension/emdb/src/provider/engine.ts",
-        "vscode-extension/emdb/src/provider/engineProtocol.ts"
-      ],
-      "dependsOn": [
-        "cu-3"
-      ],
-      "risk": "low"
-    }
-  ],
-  "files": [
-    {
-      "path": "python/emfrp_debugger/emfrp_bridge/core/debugger.py",
-      "changeUnits": [
-        "cu-2"
-      ],
-      "patch": "@@ -20,7 +20,7 @@\n from returns.result import Failure, Success\n from emfrp_debugger.emfrp_bridge.core.stack_trace import EmfrpStack, convert_to_frp_stack\n from emfrp_debugger.emfrp_bridge.core.input_interface import InputInterface\n-from emfrp_debugger.emfrp_bridge.services.input_trace_manager import InputTraceManager\n+from emfrp_debugger.emfrp_bridge.services.input_trace_manager import InputTraceManager, SavedInputTraceIter\n # context\n\n @dataclass\n@@ -50,8 +50,10 @@ def __init__(self, mapping_schema: MappingSchema, gdb_impl: GDBInterface):\n         self._function_breakpoints: Dict[str, UpdateBreakpointResult] = {}  # function name -> bp_id\n         self._node_watchpoints: Dict[Tuple[str, Optional[str]], UpdateBreakpointResult] = {}  # node name -> wp_id\n         self._input_trace_manager: Optional[InputTraceManager] = None\n+        self._saved_iter = SavedInputTraceIter() # 前回のセッションで使った入力イテレータを管理するクラス\n\n     def on_abort(self):\n+        self.save_input_iter()\n         if self._input_trace_manager is not None:\n             self._input_trace_manager.deactivate()\n         self._c_debuggee.kill()\n@@ -610,6 +612,21 @@ def register_input_interface(self, input_interface: InputInterface) -> Result[No\n         if isinstance(ret, Failure):\n             return Failure(ret.failure())\n         return Success(None)\n+    \n+    def load_input_interface(self) -> Result[None, str]:\n+        trace = self._saved_iter.load_saved_trace(str(self._mapping.c_entry_file))\n+        if isinstance(trace, Failure):\n+            return Failure(trace.failure())\n+        return self.register_input_interface(self._saved_iter)\n+    \n+    def save_input_iter(self):\n+        if self._input_trace_manager is not None:\n+            self._input_trace_manager.save_trace(str(self._mapping.c_entry_file))\n+    \n+    def input_interface_active(self) -> bool:\n+        if self._input_trace_manager is not None:\n+            return True\n+        return False\n\n     def print_current_bps(self):\n         bps = self._breakpoint_manager.list_breakpoints()"
-    },
-    {
-      "path": "python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py",
-      "changeUnits": [
-        "cu-1"
-      ],
-      "patch": "@@ -1,13 +1,67 @@\n+import os\n import time\n from typing import Dict, List, Optional, Tuple\n\n from emfrp_debugger.emfrp_bridge.core.gdb_interface import GDBInterface\n-from emfrp_debugger.emfrp_bridge.core.input_interface import InputInterface\n+from emfrp_debugger.emfrp_bridge.core.input_interface import InputInterface, InputNode\n from emfrp_debugger.emfrp_bridge.services.exec_controller import CallbackResult\n from emfrp_debugger.emfrp_bridge.services.mapping.source_mapping import SourceMapping\n from returns.result import Result, Failure, Success\n\n MAX_UNLOADED_ITERS = 100000\n+DST_TRACE_FILE = \"trace.txt\"\n+\n+class SavedInputTraceIter(InputInterface):\n+    def __init__(self):\n+        self._pos: int = 0\n+        self._buf: List[List[InputNode]] = []\n+    \n+    def next(self) -> Optional[List[InputNode]]:\n+        if self._pos >= len(self._buf):\n+            return None\n+        rec = self._buf[self._pos]\n+        self._pos += 1\n+        return rec\n+    \n+    def deactivate(self) -> None: \n+        pass\n+    \n+    def load_saved_trace(self, prog_uniq_id: str) -> Result[None, str]:\n+        # check if file exists\n+\n+        if not os.path.exists(DST_TRACE_FILE):\n+            return Failure(f\"Trace file '{DST_TRACE_FILE}' does not exist.\")\n+        try:\n+            with open(DST_TRACE_FILE, \"r\") as f:\n+                lines = f.readlines()\n+                if len(lines) == 0:\n+                    return Failure(f\"unexpected empty trace file: '{DST_TRACE_FILE}'\")\n+                if lines[0].strip() != prog_uniq_id:\n+                    return Failure(\n+                        f\"trace file '{DST_TRACE_FILE}' does not match the program \"\n+                        \"being debugged.\"\n+                    )\n+                for line in lines[1:]:\n+                    line = line.strip()\n+                    if line == \"\":\n+                        continue\n+                    parts = line.split(\",\")\n+                    record: List[InputNode] = []\n+                    for part in parts:\n+                        nv = part.split(\"=\")\n+                        if len(nv) != 2:\n+                            return Failure(\n+                                f\"Malformed trace file '{DST_TRACE_FILE}': \"\n+                                f\"invalid record '{part}'\"\n+                            )\n+                        node_name = nv[0].strip()\n+                        value = nv[1].strip()\n+                        record.append(InputNode(node_name=node_name, value=value))\n+                    self._buf.append(record)\n+            return Success(None)\n+\n+        except Exception as e:\n+            return Failure(f\"Failed to open trace file '{DST_TRACE_FILE}': {e}\")\n\n class InputTraceManager:\n     def __init__(self, input_interface: InputInterface, mapping: SourceMapping):\n@@ -26,6 +80,21 @@ def __init__(self, input_interface: InputInterface, mapping: SourceMapping):\n                 )\n             self._c_exp.append((node_name, nd_info.c_exp))\n\n+    def save_trace(self, prog_uniq_id: str) -> None:\n+        try:\n+            with open(DST_TRACE_FILE, \"w\") as f:\n+                f.write(f\"{prog_uniq_id}\\n\")\n+                for rec in self._buf:\n+                    line_parts: List[str] = []\n+                    for value, idx in rec:\n+                        node_name, _ = self._c_exp[idx]\n+                        line_parts.append(f\"{node_name}={value}\")\n+                    line = \",\".join(line_parts)\n+                    f.write(f\"{line}\\n\")\n+        except Exception as e:\n+            print(f\"InputTraceManager: Failed to save trace to '{DST_TRACE_FILE}': {e}\")\n+        \n+            \n     def current_iter(self) -> Optional[int]:\n         if self._next_iter == 0:\n             return None"
-    },
-    {
-      "path": "python/emfrp_debugger/vscode_adapter/request.py",
-      "changeUnits": [
-        "cu-3"
-      ],
-      "patch": "@@ -15,7 +15,7 @@ class RequestEmpty(RequestBase):\n class RequestStartParam(RequestBase):\n     mappingPath: FullPath\n     stopOnEntry: bool\n-    executionMode: Literal[\"normal\", \"user-input\"]\n+    executionMode: Literal[\"normal\", \"user-input\", \"user-replay\"]\n     @field_validator(\"mappingPath\", mode=\"before\")\n     @classmethod\n     def to_full_path(cls, v: str) -> FullPath:"
-    },
-    {
-      "path": "python/emfrp_debugger/vscode_adapter/vscode_debug_session.py",
-      "changeUnits": [
-        "cu-3"
-      ],
-      "patch": "@@ -51,10 +51,25 @@ def start(self):\n                     self.attach(str(req.params.mappingPath))\n                     assert self._debugger is not None, \"Debugger should be initialized after attach.\"\n\n-                    # Register input interface if user-input mode is selected\n-                    if self._input_interface is not None:\n-                        if req.params.executionMode == \"user-input\":\n+                    # check if each mode(user-input, user-replay) is possible\n+                    if req.params.executionMode == \"user-replay\":\n+                        res = self._debugger.load_input_interface()\n+                        if isinstance(res, Failure):\n+                            send_response(ResponseCommandFail(\n+                                id=req.id,\n+                                kind=\"commandFail\",\n+                                params=ResponseParamWithMessage(message=\"No replay data\")\n+                            ))\n+                            continue\n+                    elif req.params.executionMode == \"user-input\":\n+                        if self._input_interface is not None:\n                             self._debugger.register_input_interface(self._input_interface)\n+                        else:\n+                            send_response(ResponseCommandFail(\n+                                id=req.id, \n+                                kind=\"commandFail\",\n+                                params=ResponseParamWithMessage(message=\"No Input interface is registered\")))\n+                            continue\n\n                     resp = ResponseStart(\n                         id=req.id,\n@@ -89,6 +104,7 @@ def start(self):\n                     self.detach()\n                     resp = ResponseSuccess(id=req.id, kind=\"success\", params=ResponseEmpty())\n                     send_response(resp)\n+                    break\n\n                 elif req.kind == \"stack\":\n                     state = debugger.get_current_stack()\n@@ -267,8 +283,7 @@ def start(self):\n                     ))\n\n                 elif req.kind == \"user-input\":\n-                    cur_iter = debugger.input_view_current_iter()\n-                    if self._input_interface is None:\n+                    if not debugger.input_interface_active():\n                         resp = ResponseCommandFail(\n                             id=req.id,\n                             kind=\"commandFail\","
-    },
-    {
-      "path": "vscode-extension/emdb/package.json",
-      "changeUnits": [
-        "cu-4"
-      ],
-      "patch": "@@ -228,11 +228,12 @@\n               },\n               \"executionMode\": {\n                 \"type\": \"string\",\n-                \"enum\": [\"normal\", \"user-input\"],\n+                \"enum\": [\"normal\", \"user-input\", \"user-replay\"],\n                 \"description\": \"Debugger Execution Mode\",\n                 \"enumDescriptions\": [\n                   \"execute normally\",\n-                  \"execute with user input node(required to implement InputInterface in python engine.)\"\n+                  \"execute with user input node(required to implement InputInterface in python engine.)\",\n+                  \"execute with last user input data\"\n                 ]\n               },\n               \"trace\": {\n@@ -283,11 +284,12 @@\n               },\n               \"executionMode\": {\n                 \"type\": \"string\",\n-                \"enum\": [\"normal\", \"user-input\"],\n+                \"enum\": [\"normal\", \"user-input\", \"user-replay\"],\n                 \"description\": \"Debugger Execution Mode\",\n                 \"enumDescriptions\": [\n                   \"execute normally\",\n-                  \"execute with user input node(required to implement InputInterface in python engine.)\"\n+                  \"execute with user input node(required to implement InputInterface in python engine.)\",\n+                  \"execute with last user input data\"\n                 ]\n               },\n               \"compileError\": {"
-    },
-    {
-      "path": "vscode-extension/emdb/src/provider/emdbAdapter.ts",
-      "changeUnits": [
-        "cu-4"
-      ],
-      "patch": "@@ -91,6 +91,7 @@ export class EmdbDebugSession extends LoggingDebugSession {\n\n     const startParams = await this.engine.startRequest(mappingPath, args.executionMode, true);\n     if (typeof startParams === 'string') {\n+      vscode.window.showErrorMessage(`engine start failed: ${startParams}`);\n       this.sendErrorResponse(response, 1003, `engine start failed: ${startParams}`);\n       this.sendEvent(new TerminatedEvent());\n       return;\n@@ -524,7 +525,7 @@ export class EmdbDebugSession extends LoggingDebugSession {\n\n     }\n     else if (command === \"getTimelineWindow\") {\n-      if (this._executionMode === \"user-input\"){\n+      if (this._executionMode === \"user-input\" || this._executionMode === \"user-replay\") {\n         const res = await this.engine.getTimelineWindowRequest(args.maxRange ?? null);\n         response.body = res; // string on error\n       } else {"
-    },
-    {
-      "path": "vscode-extension/emdb/src/provider/emdbConfigurationProvider.ts",
-      "changeUnits": [
-        "cu-4"
-      ],
-      "patch": "@@ -27,7 +27,8 @@ export class EmdbConfigurationProvider implements vscode.DebugConfigurationProvi\n             const pick = await vscode.window.showQuickPick(\n                 [\n                     { label: \"Normal\", description: \"通常実行\", mode: \"normal\"},\n-                    { label: \"User Input Mode\", description: \"ユーザーが与える時変値を使って実行\", mode: \"user-input\"}\n+                    { label: \"User Input Mode\", description: \"ユーザーが与える時変値を使って実行\", mode: \"user-input\"},\n+                    { label: \"User Replay Mode\", description: \"最後に与えた時変値を使って実行\", mode: \"user-replay\"}\n                 ],\n                 {\n                     placeHolder: \"Emfrpの実行モードを選択してください\""
-    },
-    {
-      "path": "vscode-extension/emdb/src/provider/engine.ts",
-      "changeUnits": [
-        "cu-4"
-      ],
-      "patch": "@@ -68,8 +68,15 @@ export class Engine {\n         return res.params.message; // failure\n     }\n\n-    async startRequest(mappingPath: string | undefined, executionMode: ExecutionMode, stopOnEntry: boolean): Promise<EmdbResponseStartParam> {\n+    async startRequest(mappingPath: string | undefined, executionMode: ExecutionMode, stopOnEntry: boolean): Promise<string | EmdbResponseStartParam> {\n         const res = await this.call('start', { mappingPath, executionMode, stopOnEntry }, 100000); // 実機の場合はESP-IDFの起動に時間がかかる可能性がある\n+        if (res.kind !== 'start') {\n+            if (res.kind === 'commandFail') {\n+                const msg = res.params.message;\n+                return msg;\n+            }\n+            engineErr(`start request failed: ${JSON.stringify(res)}`);\n+        }\n         try {\n             return {\n                 nodes: res.params.nodes,\n@@ -79,12 +86,7 @@ export class Engine {\n             };\n         } catch {\n             engineErr(`start response parse error: ${JSON.stringify(res)}`);\n-            return {\n-                nodes: [],\n-                edges: [],\n-                inputNodes: [],\n-                outputNodes: []\n-            };\n+            return \"Internal error in start response\";\n         }\n\n     }"
-    },
-    {
-      "path": "vscode-extension/emdb/src/provider/engineProtocol.ts",
-      "changeUnits": [
-        "cu-4"
-      ],
-      "patch": "@@ -98,4 +98,4 @@ export type EmdbResponseDataBreakParam = {\n     cond: string | null;\n     isSoft: boolean;\n }[];\n-export type ExecutionMode = \"normal\" | \"user-input\";\n\\ No newline at end of file\n+export type ExecutionMode = \"normal\" | \"user-input\" | \"user-replay\";\n\\ No newline at end of file"
-    }
-  ],
-  "contextSnippets": [
-    {
-      "path": "python/emfrp_debugger/emfrp_bridge/core/debugger.py",
-      "startLine": 40,
-      "endLine": 75,
-      "content": "        # self._c_debuggee = GDBInterfaceImplLLDB()\n        self._c_debuggee = gdb_impl\n        self._frp_src_code_lines: dict[str, List[str]] = {}  # Source code lines for each file\n        self._exec_controller = ExecController(self._mapping, self._c_debuggee)\n        self._working_dir: Optional[FullPath] = None\n        self._printer = EmfrpPrettyPrinter(mapping_schema)\n        self._breakpoint_manager = BreakpointController(self._c_debuggee, self._mapping, self._printer, self._exec_controller)\n        self._local_vars_manager = LocalVarsResolver(mapping_schema, self._mapping, self._c_debuggee, self._printer)\n        self._current_state: FRPExecResultInner = FRPExecFailed(message=\"Debugger not started yet\")\n        self._line_breakpoints: Dict[FullPath, Dict[Tuple[int, int], UpdateBreakpointResult]] = {}\n        self._function_breakpoints: Dict[str, UpdateBreakpointResult] = {}\n        self._node_watchpoints: Dict[Tuple[str, Optional[str]], UpdateBreakpointResult] = {}\n        self._input_trace_manager: Optional[InputTraceManager] = None\n        self._saved_iter = SavedInputTraceIter() # 前回のセッションで使った入力イテレータを管理するクラス\n\n    def on_abort(self):\n        self.save_input_iter()\n        if self._input_trace_manager is not None:\n            self._input_trace_manager.deactivate()\n        self._c_debuggee.kill()"
-    },
-    {
-      "path": "python/emfrp_debugger/emfrp_bridge/core/debugger.py",
-      "startLine": 600,
-      "endLine": 640,
-      "content": "    def register_input_interface(self, input_interface: InputInterface) -> Result[None, str]:\n        input_trace_manager = InputTraceManager(input_interface, self._mapping)\n        synt_after_input = self._mapping.frp_syntax_after_input()\n        ret = self._exec_controller.register_callback_on_break(\n            synt_after_input,\n            lambda: input_trace_manager.callback_on_stop(self._c_debuggee)\n        )\n        self._input_trace_manager = input_trace_manager\n        self.load_input_cache(timeout_ms=100, max_load_cnt=1000)\n        if isinstance(ret, Failure):\n            return Failure(ret.failure())\n        return Success(None)\n\n    def load_input_interface(self) -> Result[None, str]:\n        trace = self._saved_iter.load_saved_trace(str(self._mapping.c_entry_file))\n        if isinstance(trace, Failure):\n            return Failure(trace.failure())\n        return self.register_input_interface(self._saved_iter)\n\n    def save_input_iter(self):\n        if self._input_trace_manager is not None:\n            self._input_trace_manager.save_trace(str(self._mapping.c_entry_file))\n\n    def input_interface_active(self) -> bool:\n        if self._input_trace_manager is not None:\n            return True\n        return False"
-    },
-    {
-      "path": "python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py",
-      "startLine": 1,
-      "endLine": 115,
-      "content": "import os\nimport time\nfrom typing import Dict, List, Optional, Tuple\n\nfrom emfrp_debugger.emfrp_bridge.core.gdb_interface import GDBInterface\nfrom emfrp_debugger.emfrp_bridge.core.input_interface import InputInterface, InputNode\nfrom emfrp_debugger.emfrp_bridge.services.exec_controller import CallbackResult\nfrom emfrp_debugger.emfrp_bridge.services.mapping.source_mapping import SourceMapping\nfrom returns.result import Result, Failure, Success\n\nMAX_UNLOADED_ITERS = 100000\nDST_TRACE_FILE = \"trace.txt\"\n\nclass SavedInputTraceIter(InputInterface):\n    def __init__(self):\n        self._pos: int = 0\n        self._buf: List[List[InputNode]] = []\n\n    def next(self) -> Optional[List[InputNode]]:\n        if self._pos >= len(self._buf):\n            return None\n        rec = self._buf[self._pos]\n        self._pos += 1\n        return rec\n\n    def deactivate(self) -> None: \n        pass\n\n    def load_saved_trace(self, prog_uniq_id: str) -> Result[None, str]:\n        # check if file exists\n\n        if not os.path.exists(DST_TRACE_FILE):\n            return Failure(f\"Trace file '{DST_TRACE_FILE}' does not exist.\")\n        try:\n            with open(DST_TRACE_FILE, \"r\") as f:\n                lines = f.readlines()\n                if len(lines) == 0:\n                    return Failure(f\"unexpected empty trace file: '{DST_TRACE_FILE}'\")\n                if lines[0].strip() != prog_uniq_id:\n                    return Failure(\n                        f\"trace file '{DST_TRACE_FILE}' does not match the program \"\n                        \"being debugged.\"\n                    )\n                for line in lines[1:]:\n                    line = line.strip()\n                    if line == \"\":\n                        continue\n                    parts = line.split(\",\")\n                    record: List[InputNode] = []\n                    for part in parts:\n                        nv = part.split(\"=\")\n                        if len(nv) != 2:\n                            return Failure(\n                                f\"Malformed trace file '{DST_TRACE_FILE}': \"\n                                f\"invalid record '{part}'\"\n                            )\n                        node_name = nv[0].strip()\n                        value = nv[1].strip()\n                        record.append(InputNode(node_name=node_name, value=value))\n                    self._buf.append(record)\n            return Success(None)\n\n        except Exception as e:\n            return Failure(f\"Failed to open trace file '{DST_TRACE_FILE}': {e}\")\n\nclass InputTraceManager:\n    def __init__(self, input_interface: InputInterface, mapping: SourceMapping):\n        self._input_interface = input_interface\n        self._next_iter: int = 0\n\n        self._c_exp: List[Tuple[str, str]] = []\n        self._buf: List[List[Tuple[str, int]]] = []\n        self._err: Optional[str] = None\n\n        for node_name in mapping.input_nodes():\n            nd_info = mapping.get_node_info(node_name)\n            if nd_info is None:\n                raise ValueError(\n                    f\"InputTraceManager: Unknown input node name: {node_name}\"\n                )\n            self._c_exp.append((node_name, nd_info.c_exp))\n\n    def save_trace(self, prog_uniq_id: str) -> None:\n        try:\n            with open(DST_TRACE_FILE, \"w\") as f:\n                f.write(f\"{prog_uniq_id}\\n\")\n                for rec in self._buf:\n                    line_parts: List[str] = []\n                    for value, idx in rec:\n                        node_name, _ = self._c_exp[idx]\n                        line_parts.append(f\"{node_name}={value}\")\n                    line = \",\".join(line_parts)\n                    f.write(f\"{line}\\n\")\n        except Exception as e:\n            print(f\"InputTraceManager: Failed to save trace to '{DST_TRACE_FILE}': {e}\")\n\n    def current_iter(self) -> Optional[int]:\n        if self._next_iter == 0:\n            return None\n        return self._next_iter - 1",
-      "sourceUrl": "https://github.com/YugoOtani/EmfrpDebugger/blob/3ab8547a263fac763cf93158d42275096c559f65/python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py"
-    },
-    {
-      "path": "python/emfrp_debugger/vscode_adapter/vscode_debug_session.py",
-      "startLine": 45,
-      "endLine": 115,
-      "content": "if req.kind == \"start\":\n    self.attach(str(req.params.mappingPath))\n    assert self._debugger is not None\n\n    if req.params.executionMode == \"user-replay\":\n        res = self._debugger.load_input_interface()\n        if isinstance(res, Failure):\n            send_response(ResponseCommandFail(\n                id=req.id,\n                kind=\"commandFail\",\n                params=ResponseParamWithMessage(message=\"No replay data\")\n            ))\n            continue\n    elif req.params.executionMode == \"user-input\":\n        if self._input_interface is not None:\n            self._debugger.register_input_interface(self._input_interface)\n        else:\n            send_response(ResponseCommandFail(\n                id=req.id,\n                kind=\"commandFail\",\n                params=ResponseParamWithMessage(message=\"No Input interface is registered\")))\n            continue"
-    },
-    {
-      "path": "vscode-extension/emdb/src/provider/engine.ts",
-      "startLine": 60,
-      "endLine": 100,
-      "content": "async startRequest(mappingPath: string | undefined, executionMode: ExecutionMode, stopOnEntry: boolean): Promise<string | EmdbResponseStartParam> {\n    const res = await this.call('start', { mappingPath, executionMode, stopOnEntry }, 100000);\n    if (res.kind !== 'start') {\n        if (res.kind === 'commandFail') {\n            const msg = res.params.message;\n            return msg;\n        }\n        engineErr(`start request failed: ${JSON.stringify(res)}`);\n    }\n    try {\n        return {\n            nodes: res.params.nodes,\n            edges: res.params.edges,\n            inputNodes: res.params.inputNodes,\n            outputNodes: res.params.outputNodes\n        };\n    } catch {\n        engineErr(`start response parse error: ${JSON.stringify(res)}`);\n        return \"Internal error in start response\";\n    }\n}"
-    },
-    {
-      "path": "vscode-extension/emdb/src/provider/emdbConfigurationProvider.ts",
-      "startLine": 20,
-      "endLine": 45,
-      "content": "if (!config.executionMode) {\n    const pick = await vscode.window.showQuickPick(\n        [\n            { label: \"Normal\", description: \"通常実行\", mode: \"normal\"},\n            { label: \"User Input Mode\", description: \"ユーザーが与える時変値を使って実行\", mode: \"user-input\"},\n            { label: \"User Replay Mode\", description: \"最後に与えた時変値を使って実行\", mode: \"user-replay\"}\n        ],\n        {\n            placeHolder: \"Emfrpの実行モードを選択してください\"\n        }\n    );\n    if (!pick) {\n        return undefined;\n    }\n    config.executionMode = pick.mode;\n}"
-    }
-  ],
-  "uiHints": {
-    "defaultView": "change-unit",
-    "showFileTree": true,
-    "showUnifiedDiff": true,
-    "contextExpansion": {
-      "defaultLines": 8,
-      "allowFullFile": true
-    },
-    "recommendedOrdering": [
-      "cu-1",
-      "cu-2",
-      "cu-3",
-      "cu-4"
+
+  "overview": {
+    "summary": "デバッグ実行中の入力履歴を trace.txt に保存し、user-replay モードでは保存済み履歴を InputInterface として復元して既存の実行経路から再生できるようにする。",
+    "implementation": [
+      "入力履歴を program ID と iteration ごとの node=value レコードとして trace.txt に保存する",
+      "保存済み trace を SavedInputTraceIter として復元し、既存の InputInterface 登録経路へ接続する",
+      "user-replay を VS Code から Python debugger まで executionMode として伝播する",
+      "保存データを利用できない場合は commandFail として Python から VS Code まで失敗を伝播する",
+      "user-replay でも user-input と同じ入力 timeline 表示経路を利用する"
     ]
   },
-  "notes": [
-    "このfixtureは実commit 3ab8547 のデータを元にしている。",
-    "Change Unit分類はcommit diffの意味的まとまりをHTML表示検証用に整理したもの。",
-    "contextSnippetsはafter側（対象commit時点）の周辺コード。",
-    "生成物・巨大なlockfile変更を含まないため、レビューUIの固定fixtureとして扱いやすい。"
+
+  "flows": [
+    {
+      "id": "replay-execution",
+      "title": "Replay execution",
+      "description": "ユーザーが User Replay Mode を選択してから、保存済み入力が Debugger の入力源として登録されるまで。",
+      "steps": [
+        {
+          "id": "select-replay-mode",
+          "title": "User Replay Mode を選択する",
+          "description": "executionMode が未指定の場合の QuickPick に user-replay を追加する。",
+          "locationIds": [
+            "loc-config-quickpick"
+          ]
+        },
+        {
+          "id": "represent-replay-mode",
+          "title": "user-replay を extension 側の実行モードとして扱う",
+          "description": "TypeScript の ExecutionMode と debug configuration schema の両方で user-replay を許可する。",
+          "locationIds": [
+            "loc-engine-protocol-mode",
+            "loc-package-execution-mode-1",
+            "loc-package-execution-mode-2"
+          ]
+        },
+        {
+          "id": "accept-replay-request",
+          "title": "Python 側で user-replay request を受理する",
+          "description": "start request の executionMode validation に user-replay を追加する。",
+          "locationIds": [
+            "loc-python-request-mode"
+          ]
+        },
+        {
+          "id": "start-replay",
+          "title": "user-replay 起動時に保存済み入力をロードする",
+          "description": "session 層で user-replay を判定し、Debugger の復元 API を呼び出す。",
+          "locationIds": [
+            "loc-session-replay-start"
+          ]
+        },
+        {
+          "id": "load-replay-interface",
+          "title": "保存済み trace を InputInterface として登録する",
+          "description": "Debugger が SavedInputTraceIter をロードし、既存の register_input_interface() 経路へ渡す。",
+          "locationIds": [
+            "loc-debugger-load-input"
+          ]
+        },
+        {
+          "id": "restore-trace",
+          "title": "trace.txt を iteration 単位の入力へ復元する",
+          "description": "program ID を確認し、node=value レコードを InputNode へ復元する。",
+          "locationIds": [
+            "loc-trace-load"
+          ]
+        }
+      ]
+    },
+
+    {
+      "id": "trace-persistence",
+      "title": "Trace persistence",
+      "description": "実行中に蓄積した入力履歴を、次回 replay 用の trace.txt として保存する。",
+      "steps": [
+        {
+          "id": "abort-session",
+          "title": "Debugger の abort 時に保存処理を開始する",
+          "description": "セッション終了を入力履歴の保存タイミングとして利用する。",
+          "locationIds": [
+            "loc-debugger-abort-save"
+          ]
+        },
+        {
+          "id": "delegate-save",
+          "title": "Debugger から InputTraceManager へ保存を委譲する",
+          "description": "現在の program ID と入力バッファを保存処理へ渡す。",
+          "locationIds": [
+            "loc-debugger-save-input"
+          ]
+        },
+        {
+          "id": "write-trace-file",
+          "title": "入力履歴を trace.txt へ直列化する",
+          "description": "program ID を先頭行に、各 iteration の入力を node=value 形式で保存する。",
+          "locationIds": [
+            "loc-trace-save"
+          ]
+        }
+      ]
+    },
+
+    {
+      "id": "replay-start-failure",
+      "title": "Replay start failure",
+      "description": "保存済み trace を利用できない場合のエラーを Python から VS Code UI まで伝播する。",
+      "steps": [
+        {
+          "id": "detect-invalid-trace",
+          "title": "保存済み trace の読み込み失敗を検出する",
+          "description": "ファイル不存在、program ID 不一致、不正レコードなどを Failure とする。",
+          "locationIds": [
+            "loc-trace-load"
+          ]
+        },
+        {
+          "id": "propagate-debugger-failure",
+          "title": "Debugger API から Failure を返す",
+          "description": "SavedInputTraceIter の読み込み失敗を呼び出し側へそのまま返す。",
+          "locationIds": [
+            "loc-debugger-load-input"
+          ]
+        },
+        {
+          "id": "convert-command-fail",
+          "title": "Failure を commandFail response へ変換する",
+          "description": "user-replay の起動を中止し、protocol 上の失敗応答へ変換する。",
+          "locationIds": [
+            "loc-session-replay-start"
+          ]
+        },
+        {
+          "id": "return-engine-error",
+          "title": "engine が commandFail を文字列の失敗結果として返す",
+          "description": "正常な start response と失敗文字列を union として adapter へ返す。",
+          "locationIds": [
+            "loc-engine-start-failure",
+            "loc-engine-parse-failure"
+          ]
+        },
+        {
+          "id": "show-vscode-error",
+          "title": "VS Code 上で起動失敗を通知する",
+          "description": "DAP error response に加えて showErrorMessage() でもユーザーへ通知する。",
+          "locationIds": [
+            "loc-adapter-start-error"
+          ]
+        }
+      ]
+    },
+
+    {
+      "id": "replay-input-state",
+      "title": "Replay input state",
+      "description": "user-replay を既存の user-input と同様に入力履歴を持つ実行モードとして扱う。",
+      "steps": [
+        {
+          "id": "centralize-input-active-state",
+          "title": "入力 interface の active 判定を Debugger に集約する",
+          "description": "session 固有の状態ではなく Debugger に登録された InputInterface を基準に判定する。",
+          "locationIds": [
+            "loc-session-input-active"
+          ]
+        },
+        {
+          "id": "load-replay-timeline",
+          "title": "user-replay でも timeline を取得する",
+          "description": "user-input と同じ timeline window 取得経路へ user-replay を含める。",
+          "locationIds": [
+            "loc-adapter-replay-timeline"
+          ]
+        }
+      ]
+    }
+  ],
+
+  "locations": [
+    {
+      "id": "loc-trace-load",
+      "file": "python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py",
+      "startLine": 1,
+      "endLine": 67
+    },
+    {
+      "id": "loc-trace-save",
+      "file": "python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py",
+      "startLine": 80,
+      "endLine": 100
+    },
+
+    {
+      "id": "loc-debugger-abort-save",
+      "file": "python/emfrp_debugger/emfrp_bridge/core/debugger.py",
+      "startLine": 50,
+      "endLine": 59
+    },
+    {
+      "id": "loc-debugger-load-input",
+      "file": "python/emfrp_debugger/emfrp_bridge/core/debugger.py",
+      "startLine": 612,
+      "endLine": 625
+    },
+    {
+      "id": "loc-debugger-save-input",
+      "file": "python/emfrp_debugger/emfrp_bridge/core/debugger.py",
+      "startLine": 626,
+      "endLine": 632
+    },
+
+    {
+      "id": "loc-python-request-mode",
+      "file": "python/emfrp_debugger/vscode_adapter/request.py",
+      "startLine": 15,
+      "endLine": 21
+    },
+
+    {
+      "id": "loc-session-replay-start",
+      "file": "python/emfrp_debugger/vscode_adapter/vscode_debug_session.py",
+      "startLine": 51,
+      "endLine": 75
+    },
+    {
+      "id": "loc-session-terminate-loop",
+      "file": "python/emfrp_debugger/vscode_adapter/vscode_debug_session.py",
+      "startLine": 104,
+      "endLine": 110
+    },
+    {
+      "id": "loc-session-input-active",
+      "file": "python/emfrp_debugger/vscode_adapter/vscode_debug_session.py",
+      "startLine": 283,
+      "endLine": 289
+    },
+
+    {
+      "id": "loc-package-execution-mode-1",
+      "file": "vscode-extension/emdb/package.json",
+      "startLine": 228,
+      "endLine": 239
+    },
+    {
+      "id": "loc-package-execution-mode-2",
+      "file": "vscode-extension/emdb/package.json",
+      "startLine": 284,
+      "endLine": 295
+    },
+
+    {
+      "id": "loc-adapter-start-error",
+      "file": "vscode-extension/emdb/src/provider/emdbAdapter.ts",
+      "startLine": 91,
+      "endLine": 97
+    },
+    {
+      "id": "loc-adapter-replay-timeline",
+      "file": "vscode-extension/emdb/src/provider/emdbAdapter.ts",
+      "startLine": 525,
+      "endLine": 531
+    },
+
+    {
+      "id": "loc-config-quickpick",
+      "file": "vscode-extension/emdb/src/provider/emdbConfigurationProvider.ts",
+      "startLine": 27,
+      "endLine": 34
+    },
+
+    {
+      "id": "loc-engine-start-failure",
+      "file": "vscode-extension/emdb/src/provider/engine.ts",
+      "startLine": 68,
+      "endLine": 82
+    },
+    {
+      "id": "loc-engine-parse-failure",
+      "file": "vscode-extension/emdb/src/provider/engine.ts",
+      "startLine": 86,
+      "endLine": 92
+    },
+
+    {
+      "id": "loc-engine-protocol-mode",
+      "file": "vscode-extension/emdb/src/provider/engineProtocol.ts",
+      "startLine": 98,
+      "endLine": 101
+    }
+  ],
+
+  "explanations": [
+    {
+      "locationId": "loc-trace-load",
+      "title": "保存済み trace を再生可能な入力源へ復元",
+      "role": "trace.txt の内容を SavedInputTraceIter の内部バッファへ読み込み、既存の InputInterface.next() から iteration 単位で再生できる状態にする。",
+      "why": "Replay 専用の実行ループを追加せず、既存の InputInterface 抽象と Debugger の入力処理を再利用するため。",
+      "watch": [
+        "trace の先頭に保存された program ID と現在の program を照合する",
+        "ファイル不存在、空データ、別 program、不正なレコードは Failure とする"
+      ]
+    },
+    {
+      "locationId": "loc-trace-save",
+      "title": "現在の入力履歴を次回 replay 用に保存",
+      "role": "実行中に蓄積した入力バッファを program ID と node=value レコードへ直列化して trace.txt に保存する。",
+      "why": "次回起動時に同じ入力系列を SavedInputTraceIter から再現できる永続形式を用意するため。",
+      "watch": [
+        "書き込み失敗は例外として上位へ伝播せず標準出力へ記録する"
+      ]
+    },
+
+    {
+      "locationId": "loc-debugger-abort-save",
+      "title": "セッション終了を入力履歴の保存タイミングにする",
+      "role": "Debugger の abort 処理に入力履歴の保存を組み込み、終了時点の入力系列を次回 replay 用に残す。",
+      "why": "デバッグセッションのライフサイクル境界で保存することで、UIやprotocol層に永続化責務を持たせないため。"
+    },
+    {
+      "locationId": "loc-debugger-load-input",
+      "title": "保存済み入力を既存の Debugger 入力経路へ接続",
+      "role": "SavedInputTraceIter の読み込みに成功した後、通常の InputInterface と同じ register_input_interface() 経路へ登録する。",
+      "why": "user-input と user-replay で実行ループを分岐させず、入力源だけを差し替える構造にするため。",
+      "watch": [
+        "読み込み Failure は登録せず呼び出し側へ返す"
+      ]
+    },
+    {
+      "locationId": "loc-debugger-save-input",
+      "title": "入力履歴の永続化を InputTraceManager へ委譲",
+      "role": "Debugger が保持する現在の program 情報と入力履歴を保存処理へ接続する。",
+      "why": "Debugger は保存タイミングを管理し、具体的な直列化形式は InputTraceManager に閉じ込めるため。"
+    },
+
+    {
+      "locationId": "loc-python-request-mode",
+      "title": "Python protocol で user-replay を受理",
+      "role": "VS Code から送信される start request の executionMode として user-replay をvalidation可能にする。",
+      "why": "TypeScript 側で追加した新しい実行モードを Python 側の型検証で拒否しないため。"
+    },
+
+    {
+      "locationId": "loc-session-replay-start",
+      "title": "user-replay 起動を保存済み入力の復元へ接続",
+      "role": "start request が user-replay の場合に Debugger の load_input_interface() を呼び、失敗時は commandFail を返して起動を中止する。",
+      "why": "protocol 層を、executionMode と Debugger の具体的な起動処理を接続する境界として利用するため。",
+      "watch": [
+        "保存データを利用できない場合は通常起動へfallbackせず明示的に失敗する"
+      ]
+    },
+    {
+      "locationId": "loc-session-terminate-loop",
+      "title": "terminate 後に request loop を終了",
+      "role": "terminate の success response を返した後、session が追加 request を処理し続けないよう request loop を終了する。",
+      "watch": [
+        "replay 機能とは直接独立した変更だが、同じ変更差分に含まれている"
+      ]
+    },
+    {
+      "locationId": "loc-session-input-active",
+      "title": "入力状態判定を Debugger の登録状態へ統一",
+      "role": "user-input と user-replay のどちらでも、Debugger に InputInterface が登録されているかを共通の active 判定として利用する。",
+      "why": "session が特定の入力方式を直接知る必要をなくし、入力源の違いを Debugger 内へ閉じ込めるため。"
+    },
+
+    {
+      "locationId": "loc-package-execution-mode-1",
+      "title": "debug configuration で user-replay を許可",
+      "role": "VS Code の debug configuration schema に user-replay を追加し、設定ファイルから新しい実行モードを指定できるようにする。",
+      "watch": [
+        "enum と enumDescriptions の並びを対応させる"
+      ]
+    },
+    {
+      "locationId": "loc-package-execution-mode-2",
+      "title": "重複する configuration schema を同期",
+      "role": "もう一方の debug configuration 定義にも同じ user-replay option を追加する。",
+      "why": "configuration 種別によって executionMode の許容値が異なる状態を防ぐため。"
+    },
+
+    {
+      "locationId": "loc-adapter-start-error",
+      "title": "engine 起動失敗を VS Code UI へ通知",
+      "role": "engine.startRequest() が文字列の失敗結果を返した場合、DAP error response と VS Code の error message の両方へ変換する。",
+      "why": "replay 用 trace が存在しないなどの起動失敗をユーザーから直接確認できるようにするため。"
+    },
+    {
+      "locationId": "loc-adapter-replay-timeline",
+      "title": "replay 入力も timeline 表示の対象にする",
+      "role": "user-replay を user-input と同じ入力履歴表示経路へ含める。",
+      "why": "再生された入力も timeline 上では通常のユーザー入力履歴と同様に確認できるため。"
+    },
+
+    {
+      "locationId": "loc-config-quickpick",
+      "title": "起動モード選択 UI に User Replay Mode を追加",
+      "role": "executionMode が設定されていない起動時に、ユーザーが最後の入力履歴を使うモードを選択できるようにする。",
+      "why": "user-replay を設定ファイルだけでなく対話的な起動フローからも利用できるようにするため。"
+    },
+
+    {
+      "locationId": "loc-engine-start-failure",
+      "title": "Python の commandFail を engine の失敗結果へ変換",
+      "role": "start response が正常な start でない場合を判別し、commandFail の message を adapter へ返す。",
+      "why": "Python 側の replay 復元失敗を TypeScript の起動処理まで失わずに伝播するため。",
+      "watch": [
+        "成功時は EmdbResponseStartParam、失敗時は string という union になる"
+      ]
+    },
+    {
+      "locationId": "loc-engine-parse-failure",
+      "title": "response parse 失敗を正常値に偽装しない",
+      "role": "start response の解釈に失敗した場合、空グラフではなく明示的な失敗文字列を返す。",
+      "why": "異常系を正常な空データとして扱うと adapter が起動成功と誤認するため。"
+    },
+
+    {
+      "locationId": "loc-engine-protocol-mode",
+      "title": "extension 内の ExecutionMode 型に user-replay を追加",
+      "role": "VS Code extension 内で user-replay を正式な executionMode として扱えるよう型定義を拡張する。",
+      "why": "QuickPick、engine request、Python request まで同じ executionMode 集合を共有するため。"
+    }
   ]
 }
