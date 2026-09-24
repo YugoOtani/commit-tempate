@@ -1,848 +1,806 @@
-# AI Change Review HTML Generator 仕様書
+# AI Change Review MVP 実装手順
 
-## 1. 概要
+## 目的
 
-本プログラムは、Gitによる変更差分とAIによるレビュー結果を入力として受け取り、人間のレビュアーが変更内容、リスク、確認箇所、根拠を短時間で把握できる単一HTMLレポートを生成するCLIツールである。
+AI が実装した変更について、人間が「自分で実装した場合に近い理解」を短時間で形成できるレビュー UI を作る。
 
-生成するHTMLはネットワーク接続を必要とせず、ローカル環境およびCIの成果物として閲覧できるものとする。
+MVP では、以下の体験を実現する。
 
-### 1.1 目的
+1. HTML で変更全体の実装概要を把握する
+2. VS Code 上で複数の実装フローから読みたいフローを選択する
+3. フローの各 Step を辿ると、その Step に対応する Git 差分へ移動する
+4. 変更箇所のコード上に、その実装上の役割・理由・注意点を表示する
+5. 必要に応じて周辺コードを確認する
 
-- 変更全体の概要と推奨アクションを最初に提示する。
-- AIレビューの各説明を実際のdiff上のファイルおよび行へ対応付ける。
-- 人間による確認が必要な箇所をリスクとともに明示する。
-- 仕様、テスト計画、実装、テストなどの参照関係を可視化する。
-- AIの評価と、入力された事実であるGit差分を明確に区別する。
-- CIから配布しやすい、自己完結したレビュー資料を生成する。
+MVP の主な検証テーマは以下。
 
-### 1.2 基本方針
+> Flow 順に差分を読むことで、通常のファイル順 diff より実装理解までの時間を短縮できるか。
 
-- AIレビューは承認の代替ではなく、人間によるレビューを補助する情報として扱う。
-- Git diffおよびレビューJSONは、いずれも信頼できない入力として扱う。
-- 同じ入力と同じオプションからは、同じHTMLを生成する。
-- diffに含まれない情報を推測して表示しない。
-- 解決できない参照や非対応の入力は、黙って無視せず警告またはエラーにする。
+高度な自動解析やレビュー機能は、この仮説を確認した後に追加する。
 
-## 2. 用語
+---
 
-| 用語 | 意味 |
-| --- | --- |
-| レビューJSON | `schema.json`に準拠したAIレビュー結果 |
-| Change Unit | 人間が一つの意味単位として確認できる変更のまとまり |
-| Implementation Section | Change Unitに含まれる具体的な実装位置と説明 |
-| Reference | 仕様、テスト計画、実装、テストなど、レビュー判断の根拠 |
-| old side | 変更前のファイルと行番号 |
-| new side | 変更後のファイルと行番号 |
-| 解決済み参照 | diff内の具体的なファイルおよび行へ対応付けられた参照 |
-| 未解決参照 | diff外、パス不一致、行不一致などにより対応付けられなかった参照 |
-| 説明済み変更 | Implementation Sectionによって説明対象として対応付けられた実際の変更行またはファイル単位の変更 |
-| 未説明変更 | diffに存在する実際の変更のうち、いずれのImplementation Sectionにも説明対象として対応付けられなかったもの |
+# 1. 基本コンセプト
 
-## 3. 対象範囲
+レビュー対象の中心概念を Git commit ではなく `Change` とする。
 
-### 3.1 MVPに含める機能
-
-- Gitの通常の二者間unified diffの読み込み
-- JSON SchemaによるレビューJSONの検証
-- レビューJSONに対する意味検証
-- diffのファイル、hunk、行番号の解析
-- Change UnitおよびReferenceとdiff行の対応付け
-- diff上の実際の変更とImplementation Sectionの照合、および未説明変更の検出
-- 全体サマリー、Change Unit、ファイル別diffを含むHTML生成
-- 追加、変更、削除、rename、copy、mode変更、バイナリ変更、submodule変更の表示
-- 未解決参照および解析警告の表示
-- 単一HTMLファイルへのCSS埋め込み
-- 標準入力およびファイル入力
-- CIで利用可能な終了コードと診断メッセージ
-
-### 3.2 MVPに含めない機能
-
-- Git patchの適用
-- Gitリポジトリへの書き込み
-- commit、push、レビュー承認などの外部操作
-- リポジトリからのファイル内容の自動取得
-- diffに含まれないコードの補完表示
-- merge commitのcombined diff解析
-- ブラウザー上でのレビューコメント保存
-- 複数ユーザーによる共同編集
-- AIレビューの生成
-- AIレビュー内容の正しさの自動保証
-- 入力文字列中のHTMLの描画
-
-## 4. 入出力
-
-### 4.1 入力
-
-プログラムは次の2入力を必須とする。
-
-1. Git diff
-2. レビューJSON
-
-JSON Schemaは、既定ではプログラムに同梱されたバージョンを使用する。開発および検証用途として、任意のschemaファイルを指定可能とする。
-
-### 4.2 Git diff
-
-#### 4.2.1 対応形式
-
-- UTF-8で表現されたGit patch形式または一般的なunified diff
-- 通常の二者間diff
-- `diff --git`ヘッダー
-- `---`および`+++`ファイルヘッダー
-- `@@`形式のhunkヘッダー
-- Gitのextended header
-- new file、deleted file、rename、copy、mode変更
-- `Binary files ... differ`形式のバイナリ変更
-- submoduleのcommit参照変更
-- `No newline at end of file`マーカー
-
-#### 4.2.2 非対応形式
-
-- `diff --cc`および`diff --combined`によるcombined diff
-- 3つ以上の親を持つ行番号表現
-- Git以外の独自拡張で、通常のunified diffとして解釈できない形式
-
-非対応形式を検出した場合、部分的なレポートを正常結果として出力してはならない。対象と理由を示して解析エラーとする。
-
-#### 4.2.3 推奨生成方法
-
-```bash
-git diff \
-  --no-ext-diff \
-  --no-textconv \
-  --find-renames \
-  --unified=10 \
-  BASE...HEAD > changes.diff
-```
-
-プログラムはdiffを入力として扱い、Gitコマンドを暗黙には実行しない。
-
-### 4.3 レビューJSON
-
-レビューJSONは`schema.json`に準拠するものとする。主要な構造は次のとおりである。
-
-- `version`: レビュー形式のバージョン
-- `summary`: 変更全体に対するレビュー
-- `change_units`: 意味単位に分割された変更と評価
-- `implementation.sections`: 実装位置
-- `review`: リスク、評価、人間による確認の要否
-- `references`: 仕様やテストなどの根拠
-
-レビューJSON中の文字列はプレーンテキストとする。MVPではMarkdownおよびHTMLとして解釈しない。
-
-### 4.4 任意メタデータ
-
-次の値をCLIオプションから任意で指定できるものとする。
-
-- リポジトリ名またはURL
-- base revision
-- head revision
-- レポートタイトル
-- ソースコードへのURLテンプレート
-- 生成日時
-
-再現可能な出力を維持するため、生成日時は明示的に指定された場合にのみHTMLへ含める。
-
-### 4.5 出力
-
-- 既定の出力先は標準出力とする。
-- `--output`指定時は、指定した1つのHTMLファイルへ出力する。
-- HTMLはUTF-8とする。
-- HTMLは表示に必要なCSSをすべて内包する。
-- MVPのHTMLは外部JavaScript、外部CSS、Webフォント、画像CDNを参照しない。
-- 入力diff、レビューJSON、schemaのSHA-256を監査情報として記録する。
-- 警告が存在する場合も、生成に成功したときはHTML内に警告を記録する。
-
-## 5. CLI仕様
-
-### 5.1 基本形式
-
-```bash
-review-summary render \
-  --diff <path|-> \
-  --review <path> \
-  [--schema <path>] \
-  [--output <path>] \
-  [options]
-```
-
-### 5.2 必須オプション
-
-| オプション | 説明 |
-| --- | --- |
-| `--diff <path\|->` | diffファイル。`-`は標準入力 |
-| `--review <path>` | レビューJSON |
-
-### 5.3 任意オプション
-
-| オプション | 説明 |
-| --- | --- |
-| `--schema <path>` | 検証に使用するJSON Schema |
-| `--output <path>` | HTML出力先。省略時は標準出力 |
-| `--repository <value>` | リポジトリ名またはURL |
-| `--base-revision <value>` | 変更前revision |
-| `--head-revision <value>` | 変更後revision |
-| `--title <value>` | レポートタイトルの上書き |
-| `--source-url-template <value>` | ファイルおよび行への外部リンクテンプレート |
-| `--generated-at <ISO-8601>` | HTMLに記載する生成日時 |
-| `--strict-links` | 未解決参照が1件以上あれば失敗する |
-| `--max-diff-bytes <number>` | diffの最大入力サイズ |
-| `--max-review-bytes <number>` | レビューJSONの最大入力サイズ |
-| `--help` | 使用方法を表示する |
-| `--version` | プログラムのバージョンを表示する |
-
-### 5.4 使用例
-
-```bash
-review-summary render \
-  --diff changes.diff \
-  --review review.json \
-  --schema schema.json \
-  --output report.html
-```
-
-```bash
-git diff --no-ext-diff --no-textconv --find-renames BASE...HEAD |
-  review-summary render \
-    --diff - \
-    --review review.json \
-    --output report.html
-```
-
-### 5.5 終了コード
-
-| 終了コード | 意味 |
-| --- | --- |
-| `0` | HTML生成成功。警告を含む場合がある |
-| `2` | CLI引数エラー |
-| `3` | 入力ファイルの読み込みまたはJSON構文エラー |
-| `4` | JSON Schema検証エラー |
-| `5` | レビューJSONの意味検証エラー |
-| `6` | diff解析エラーまたは非対応diff |
-| `7` | `--strict-links`指定時の未解決参照 |
-| `8` | HTML出力エラー |
-| `1` | 上記に分類できない内部エラー |
-
-診断メッセージは標準エラー出力へ出力する。正常なHTMLを標準出力へ出す場合、診断メッセージを標準出力へ混在させてはならない。
-
-## 6. レビューJSONの検証
-
-### 6.1 JSON Schema検証
-
-`schema.json`はJSON Schema Draft 2020-12として検証する。
-
-最低限、schemaには次の制約を含める。
-
-- `version`は対応する固定値であること
-- 必須プロパティが存在すること
-- 定義外プロパティを許可しないこと
-- `risk`は`low`、`medium`、`high`のいずれかであること
-- 行番号は1以上の整数であること
-- 主要な文字列は空文字列でないこと
-- `human_review_required`が`true`の場合、`human_review_focus`が存在すること
-
-### 6.2 意味検証
-
-JSON Schema検証後、アプリケーションは次を検証する。
-
-- Change Unitの`id`がレビューJSON内で一意である。
-- `end_line`がある場合、`start_line`も存在する。
-- `end_line >= start_line`である。
-- パスはリポジトリ相対パスである。
-- パスが空でない。
-- パスにNULを含まない。
-- パスが絶対パスでない。
-- パスの正規化後に`..`でリポジトリ外へ移動しない。
-- `human_review_required`が`true`の場合、確認観点が空でない。
-- `version`がプログラムの対応対象である。
-
-diff中に対象パスや行が存在するかどうかは入力自体の不正とは限らないため、通常は意味検証エラーではなく未解決参照として扱う。
-
-## 7. diff内部モデル
-
-解析したdiffは、利用ライブラリ固有の型を直接後段へ渡さず、次の概念を持つ内部モデルへ変換する。
-
-### 7.1 Diff File
-
-- 変更種別
-- old path
-- new path
-- old mode
-- new mode
-- renameまたはcopyの類似度
-- 追加行数
-- 削除行数
-- binaryフラグ
-- submoduleフラグ
-- hunk一覧
-- parser警告一覧
-
-### 7.2 Diff Hunk
-
-- old側の開始行と行数
-- new側の開始行と行数
-- hunk header中のsection情報
-- diff line一覧
-
-### 7.3 Diff Line
-
-- 種別: `context`、`addition`、`deletion`、`marker`
-- 表示する本文
-- old側行番号。存在しない場合はnull
-- new側行番号。存在しない場合はnull
-- HTMLアンカーID
-- 対応するChange UnitおよびReferenceの一覧
-- 説明対象として対応付けられたImplementation Sectionの一覧
-- 未説明変更であるかを示すフラグ
-
-## 8. パスと行の対応付け
-
-### 8.1 正規化
-
-レビューJSONのパスとdiffのパスには次の正規化を行う。
-
-- Gitの既定prefixである`a/`および`b/`をdiff解析時に分離する。
-- パス区切りは内部的に`/`へ統一する。
-- `.`セグメントを除去する。
-- Unicodeや空白を保持する。
-- 大文字小文字を区別する。
-- URL decodeを行わない。
-- symlinkの解決やファイルシステムへの問い合わせを行わない。
-
-### 8.2 対応キー
-
-行参照は次の組で識別する。
+`Change` は、ある変更要求に対して行われた一連の実装を表す。
 
 ```text
-(normalized path, line number)
+Change Request
+      ↓
+base revision
+      ↓
+implementation
+      ↓
+target revision
 ```
 
-diff側ではold側とnew側の行番号を保持するが、レビューJSONではsideを指定しない。JSONのpathと行番号を、対応するold pathとold側行番号、およびnew pathとnew側行番号の両方に対して検索する。同じ位置指定が両側に一致する場合は、該当するすべてのdiff行へ対応付ける。
+Git の revision は変更前後のソースコードを取得するための技術情報として扱い、ユーザーが理解する単位にはしない。
 
-### 8.3 パスの選択
-
-- JSONのpathがnew pathと一致する場合、new側の行番号を検索する。
-- JSONのpathがold pathと一致する場合、old側の行番号を検索する。
-- old pathとnew pathが同じ場合は、old側とnew側の両方を検索する。
-- renameまたはcopyでは、JSONにold pathを指定すればold側、new pathを指定すればnew側を検索する。
-- 追加ファイルにはold側の行、削除ファイルにはnew側の行が存在しないため、存在する側だけを検索する。
-
-### 8.4 行範囲
-
-- `start_line`のみの場合は単一行を対象とする。
-- `start_line`と`end_line`がある場合は閉区間として扱う。
-- 範囲内のうちdiffに存在するすべての行へ関連情報を付与する。
-- 範囲の一部だけがdiffに存在する場合は「一部解決」とする。
-- 対象範囲がhunk外の場合は「diff範囲外」とする。
-
-### 8.5 解決状態
-
-各Implementation SectionおよびReferenceには次のいずれかを付与する。
-
-| 状態 | 意味 |
-| --- | --- |
-| `resolved` | 指定範囲のすべてをdiff行へ対応付けた |
-| `partially_resolved` | 指定範囲の一部だけを対応付けた |
-| `file_only` | ファイルは存在するが行が指定されていない、または行がdiff外 |
-| `not_in_diff` | 指定パスがdiffに含まれない |
-
-HTMLでは未解決状態を隠さず、理由を表示する。
-
-### 8.6 変更説明の網羅性検査
-
-diff上の実際の変更と、レビューJSONの`change_units[].implementation.sections`を照合し、説明が対応付けられていない変更を検出する。この検査はReferenceの解決状態の検査とは独立して行う。
-
-#### 8.6.1 検査対象
-
-実際の変更として、次を検査対象とする。
-
-- テキストdiffの`addition`行
-- テキストdiffの`deletion`行
-- 行を持たないrename、copy、mode変更、バイナリ変更
-- 行を持たない形式で表現されたsubmodule変更
-
-`context`行および`No newline at end of file`マーカーは、それ自体を変更として扱わない。追加行はnew side、削除行はold sideの変更として別々に検査する。
-
-#### 8.6.2 テキスト変更の説明判定
-
-テキストdiffの変更行は、次のすべてを満たすImplementation Sectionが1件以上存在する場合に説明済みとする。
-
-- 正規化後の`path`が、対象行のsideに対応するdiff pathと一致する。
-- `start_line`および`end_line`で示す範囲が対象行を含む。`end_line`省略時は`start_line`の1行だけを対象とする。
-- Implementation Sectionが対象行へ解決されている。
-
-Implementation Sectionの範囲にcontext行が含まれてもよいが、網羅性の計算ではその範囲内の`addition`行または`deletion`行だけを説明済みとして数える。行番号を持たないImplementation Sectionはテキスト変更行を説明済みにはしない。
-
-追加行と削除行は別々の変更行として判定する。ただし、old pathとnew pathが同じで、同じImplementation Sectionの行範囲が両側の変更行に一致する場合、そのImplementation Sectionで追加行と削除行の両方を説明済みにできる。
-
-Reference、Change Unitのタイトル、`implementation.summary`、`implementation.description`、`review`内の文章は、具体的な変更位置を特定できないため、変更行を説明済みとする根拠には使用しない。
-
-#### 8.6.3 行を持たない変更の説明判定
-
-行を持たない変更は、正規化後の`path`が対象ファイルのold pathまたはnew pathと一致し、かつ行番号を持たないImplementation Sectionが1件以上存在する場合に説明済みとする。renameまたはcopyではold pathとnew pathのどちらを指定してもよい。
-
-同じファイルに複数種類の行を持たない変更がある場合、一致する1件のImplementation Sectionでそれらをまとめて説明済みとしてよい。テキスト変更も併存する場合、そのImplementation Sectionは行を持たない変更だけを説明し、テキスト変更行は別途行範囲を持つImplementation Sectionで説明しなければならない。
-
-#### 8.6.4 未説明箇所の集約
-
-説明されていないテキスト変更行は、同じファイル、side、hunk内で行番号が連続する範囲ごとに1件の警告へ集約する。行を持たない未説明変更は、同じファイルに属する変更種別をまとめて1件の警告としてよい。
-
-各警告は、少なくとも次の位置情報を持つ。
-
-- 正規化後のpath
-- `old`または`new`のside
-- テキスト変更では開始行と終了行
-- 行を持たない変更では変更種別
-- HTML内の該当diff箇所を示すアンカー。該当行を表示できない変更ではファイルのアンカー
-
-警告の順序はdiffのファイル順、hunk順、行順とし、同じ入力から決定的に生成する。
-
-## 9. HTMLレポート仕様
-
-### 9.1 全体構成
-
-HTMLは次の順序で構成する。
-
-1. レポートヘッダー
-2. 全体レビュー
-3. レビュー優先順位
-4. Change Unit一覧
-5. ファイル別diff
-6. 未解決参照および警告
-7. 入力と生成ツールの監査情報
-
-### 9.2 レポートヘッダー
-
-次を表示する。
-
-- レポートタイトル
-- リポジトリ情報
-- base revisionとhead revision
-- AIレビュー形式のversion
-- プログラムのversion
-- 明示された場合のみ生成日時
-
-### 9.3 全体レビュー
-
-`summary`から次を表示する。
-
-- `title`
-- `review`
-- `recommended_action`
-
-推奨アクションは本文から視覚的に区別するが、危険色だけに依存してはならない。
-
-### 9.4 集計情報
-
-次を表示する。
-
-- 変更ファイル数
-- 追加行数
-- 削除行数
-- Change Unit数
-- リスク別Change Unit数
-- `human_review_required`の件数
-- 未解決参照数
-- 未説明変更箇所数
-- バイナリ変更数
-
-### 9.5 レビュー優先順位
-
-人間が先に見るべき項目を次の順に並べる。
-
-1. `human_review_required: true`かつ`risk: high`
-2. `human_review_required: true`かつ`risk: medium`
-3. `human_review_required: true`かつ`risk: low`
-4. 人間確認不要の`high`
-5. 人間確認不要の`medium`
-6. 人間確認不要の`low`
-
-元のChange Unit順序自体は保持し、優先順位欄はナビゲーションとして別に表示する。
-
-### 9.6 Change Unit
-
-各Change Unitに次を表示する。
-
-- ID
-- タイトル
-- リスクラベル
-- 実装概要
-- 実装説明
-- AIのassessment
-- 人間確認の要否
-- 人間が確認すべき観点
-- Implementation Section一覧
-- Reference一覧
-- 対応するdiff行へのアンカー
-- 解決状態
-
-実装概要と「レビューで判断すること」は横並びにせず、実装概要を先にして縦に配置する。
-
-コードをChange Unitの主情報として扱い、各Implementation Sectionは次の順に表示する。
-
-1. タイトルおよび実装位置
-2. 対応するdiff
-3. Implementation Sectionの実装説明
-
-diffと実装説明は横並びにせず縦に配置する。diffを先に横幅いっぱいで表示し、説明が長くなってもコードの表示幅を狭めない。AIのassessmentおよび人間が確認すべき観点は、Change Unit全体の情報としてImplementation Sectionとは分けて表示する。
-
-### 9.7 ファイル別diff
-
-MVPではunified表示を採用する。
-
-各ファイルに次を表示する。
-
-- old pathとnew path
-- 変更種別
-- 追加行数と削除行数
-- mode変更
-- renameまたはcopy情報
-- binaryまたはsubmodule情報
-- hunkとdiff行
-- old側とnew側の行番号
-- 関連するChange Unitのマーカー
-
-ファイルおよびhunkは`details`要素で折り畳み可能とする。高リスクまたは人間確認対象に関連するファイルは初期状態で展開してよい。
-
-### 9.8 行の表示
-
-- context、addition、deletionを文字、背景、ラベルの組み合わせで区別する。
-- 色だけを情報伝達手段にしない。
-- 長い行はページ全体を広げず、コード領域内で横スクロール可能にする。
-- タブを破壊せず表示する。
-- 空白文字の可視化はMVPでは任意とする。
-- コード本文へsyntax highlightingを適用することはMVPでは必須としない。
-- Change Unitが対応する行には、クリックまたはキーボード操作可能なマーカーを表示する。
-
-### 9.9 Reference表示
-
-Referenceはtype別のラベルを表示する。
-
-- `spec`: 仕様
-- `test_plan`: テスト計画
-- `implementation`: 実装
-- `test`: テスト
-- `other`: その他
-
-参照先がdiff内にある場合は内部アンカーを生成する。diff外であっても、URLテンプレートから安全なURLを生成できる場合は外部リンクを追加できる。外部リンクには、外部へ移動することが分かる表示を付ける。
-
-### 9.10 警告表示
-
-次を警告として表示する。
-
-- diffに存在しないファイル参照
-- hunk外の行参照
-- 一部だけ解決された範囲
-- binaryファイルに対する行参照
-- Implementation Sectionによる説明がない変更行
-- Implementation Sectionによる説明がない、行を持たないファイル変更
-- parserが保持した未知のextended header
-- 入力サイズが警告閾値を超えた場合
-
-未説明変更の警告には、警告コードとともにpath、side、行範囲または変更種別を表示する。テキスト変更では対象範囲のdiffを警告欄内に表示し、同じ内容をファイル別diffにも表示する。警告欄からファイル別diffの該当行または該当ファイルへ移動できるリンクを付け、ファイル別diff側にも未説明であることが分かるマーカーを表示する。
-
-標準エラーへ出力する未説明変更の警告にも、`path:開始行-終了行 (side)`または`path (side, 変更種別)`の形式で該当箇所を含める。コード本文は標準エラーへ出力しなくてよい。
-
-### 9.11 監査情報
-
-レポート末尾に次を表示する。
-
-- generator nameとversion
-- schema version
-- diffのSHA-256
-- レビューJSONのSHA-256
-- schemaのSHA-256
-- 使用された主要オプション
-- 警告件数
-
-ファイルシステム上の絶対パスは監査情報へ含めない。
-
-### 9.12 印刷とアクセシビリティ
-
-- 見出し構造を維持する。
-- キーボードだけでリンクと折り畳みを操作できる。
-- リスクや変更種別を色だけで表現しない。
-- 十分なコントラストを確保する。
-- 印刷時にはナビゲーションを簡略化する。
-- 印刷時にdiff行が意図せず非表示にならないようにする。
-- `lang`属性を設定可能とし、既定値は`ja`とする。
-
-## 10. セキュリティ要件
-
-### 10.1 HTML生成
-
-- 入力由来の文字列をHTMLとして連結してはならない。
-- テキスト、属性、URLのコンテキストごとに適切なエスケープを行う。
-- レビューJSONおよびdiff内の`<script>`、イベント属性、HTMLタグを文字列として表示する。
-- 入力値を未検証のまま`innerHTML`へ渡さない。
-- HTMLレンダラー内部で、安全なHTMLと未検証文字列を型またはAPIで区別する。
-
-### 10.2 Content Security Policy
-
-最低限、次と同等以上に制限的なCSPをmeta要素で指定する。
+UI の基本構造は以下。
 
 ```text
-default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'
+HTML
+Implementation Overview
+        ↓
+VS Code
+Flow Navigator
+        ↓
+Git Diff
+        ↓
+Inline Explanation
+        ↓
+必要なら Full Source
 ```
 
-MVPではJavaScriptを使用しない。将来追加する場合は、固定されたscript hashまたはnonceを使用し、`unsafe-inline`なscriptを許可しない。
+---
 
-### 10.3 URL
+# 2. MVP Schema
 
-- 自動生成する外部URLは`https:`のみ許可する。
-- `javascript:`、`data:`、`file:`などを外部リンクとして許可しない。
-- URLテンプレートへ埋め込むpath、revision、lineは適切にpercent encodeする。
-- リンクテキストには元の人間可読なパスを使用する。
+まず以下の schema を採用する。
 
-### 10.4 リソース制限
+```ts
+type ChangeReview = {
+  change: {
+    title: string
+    baseRevision: string
+    targetRevision: string
+  }
 
-- diffとレビューJSONに最大バイト数を設定する。
-- 最大ファイル数、最大hunk数、最大行数、最大1行長を内部制限として持つ。
-- 制限超過時に無制限のメモリ確保や処理継続をしない。
-- 入力の切り捨てを正常な完全レポートとして扱わない。
-- 正規表現は入力長に対して極端なバックトラッキングを起こさないものを使用する。
+  overview: {
+    summary: string
+    implementation: string[]
+  }
 
-## 11. エラーと警告
+  flows: {
+    id: string
+    title: string
+    steps: {
+      id: string
+      title: string
+      locationIds: string[]
+    }[]
+  }[]
 
-### 11.1 エラー
+  locations: {
+    id: string
+    file: string
+    startLine: number
+    endLine: number
+  }[]
 
-次の場合、HTML生成を失敗させる。
+  explanations: {
+    locationId: string
+    title: string
+    role: string
+    why?: string
+    watch?: string[]
+  }[]
+}
+```
 
-- 必須入力を読み込めない。
-- レビューJSONがJSONとして不正である。
-- レビューJSONがschemaに準拠しない。
-- レビューJSONが意味検証に失敗する。
-- 対応していないschema versionである。
-- diff全体を信頼できる形で解析できない。
-- combined diffを検出する。
-- 入力がハードリミットを超える。
-- 出力先へ完全なHTMLを書き込めない。
-- `--strict-links`指定時に未解決参照が存在する。
+## 設計方針
 
-### 11.2 警告
+以前使用していた `ChangeUnit` は導入しない。
 
-次の場合、通常はHTML生成を続行する。
-
-- Referenceのパスがdiffに含まれない。
-- 指定行がdiffのhunk外である。
-- 範囲の一部だけを解決できた。
-- binaryファイルのため行表示できない。
-- 任意メタデータが不足している。
-- 解釈に影響しない未知のdiffメタデータがある。
-- diff上の変更行が、いずれのImplementation Sectionによっても説明されていない。
-- 行を持たないファイル変更が、いずれのImplementation Sectionによっても説明されていない。
-
-警告には機械的に識別可能なコードを付ける。
+代わりに、
 
 ```text
-W_REFERENCE_NOT_IN_DIFF
-W_LINE_OUTSIDE_HUNKS
-W_LOCATION_PARTIALLY_RESOLVED
-W_BINARY_LOCATION_UNRESOLVED
-W_UNKNOWN_DIFF_HEADER
-W_UNEXPLAINED_DIFF_LINES
-W_UNEXPLAINED_FILE_CHANGE
+Change
+  ├─ Overview
+  ├─ Flow
+  │    └─ FlowStep
+  │          └─ SourceLocation
+  │
+  └─ Explanation
+            ↓
+      SourceLocation
 ```
 
-未説明変更はレビューの不足を人間へ通知する警告であり、それだけを理由にHTML生成を失敗させない。`--strict-links`は参照の解決可否だけを対象とし、未説明変更には適用しない。
+という構造にする。
 
-## 12. 非機能要件
+`SourceLocation` を各情報を結びつける中心ノードとして扱う。
 
-### 12.1 再現性
+---
 
-- 暗黙の現在日時を出力しない。
-- localeによって並び順や数値表現が変わらないようにする。
-- Change Unitとdiffファイルの基本順序は入力順を保持する。
-- ハッシュ、アンカーID、警告コードを決定的に生成する。
+# 3. Phase 1: 手書き Fixture を作る
 
-### 12.2 性能
+最初から AI に schema を生成させない。
 
-目標値を次のとおりとする。
+まず実際の変更一件を選び、人間が手動で `review.json` を作成する。
 
-- 10 MiB以下のdiffを一般的なCI環境で10秒以内に処理する。
-- 50,000 diff行程度を実用的な時間とメモリで処理する。
-- 全入力を複数回複製する設計を避ける。
-- HTMLサイズが大きい場合も、表示前に外部通信を必要としない。
+例:
 
-性能目標は受け入れテスト環境を定義したうえで測定する。
+```json
+{
+  "change": {
+    "title": "最後に与えた時変値を自動で記録・再生する",
+    "baseRevision": "BASE_SHA",
+    "targetRevision": "TARGET_SHA"
+  },
 
-### 12.3 対応環境
+  "overview": {
+    "summary": "保存済み入力履歴を再生する user-replay モードを追加する。",
+    "implementation": [
+      "VS Code から Python まで execution mode を伝播する",
+      "保存済み trace を InputInterface として復元する",
+      "既存の Debugger 実行経路を再利用する"
+    ]
+  },
 
-- 実行環境はサポート中のNode.js LTSとする。
-- 初期の基準環境はNode.js 24 LTSとする。
-- 生成HTMLは最新の主要ブラウザーで閲覧できるものとする。
-- Linux上のCI実行を必須とし、macOSとWindowsは可能な限り対応する。
+  "flows": [
+    {
+      "id": "replay-execution",
+      "title": "Replay execution",
+      "steps": [
+        {
+          "id": "select-replay",
+          "title": "Replay モードを選択する",
+          "locationIds": ["loc-select-replay"]
+        },
+        {
+          "id": "send-mode",
+          "title": "execution mode を Python へ送る",
+          "locationIds": [
+            "loc-engine-protocol",
+            "loc-python-request"
+          ]
+        },
+        {
+          "id": "load-trace",
+          "title": "保存済み trace を読み込む",
+          "locationIds": ["loc-load-trace"]
+        },
+        {
+          "id": "attach-input",
+          "title": "Debugger へ入力源を登録する",
+          "locationIds": ["loc-debugger-input"]
+        }
+      ]
+    }
+  ],
 
-### 12.4 保守性
+  "locations": [
+    {
+      "id": "loc-load-trace",
+      "file": "python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py",
+      "startLine": 40,
+      "endLine": 80
+    }
+  ],
 
-- diff parser固有のデータ構造を内部モデルから隔離する。
-- schema検証、意味検証、diff解析、対応付け、HTML生成を分離する。
-- HTML生成は副作用のない関数を中心に構成する。
-- エラーと警告は構造化された診断モデルで扱う。
+  "explanations": [
+    {
+      "locationId": "loc-load-trace",
+      "title": "保存済み trace を入力源へ復元",
+      "role": "保存された入力履歴を既存の InputInterface として再生可能な状態にする。",
+      "why": "Replay 専用の実行ループを作らず、既存の入力抽象を再利用するため。",
+      "watch": [
+        "program ID が一致しない trace は読み込まない",
+        "不正なレコードは読み込み失敗として扱う"
+      ]
+    }
+  ]
+}
+```
 
-## 13. 実装技術
+## この Phase の目的
 
-### 13.1 推奨構成
+schema が実際の UI を表現するのに十分か確認する。
 
-| 領域 | 技術 |
-| --- | --- |
-| 言語 | TypeScript |
-| 実行環境 | Node.js 24 LTS |
-| JSON Schema検証 | AjvのDraft 2020-12対応API |
-| diff解析 | `parse-diff`をアダプター経由で利用 |
-| HTML生成 | 独自の静的レンダラー |
-| テスト | VitestまたはNode.js test runner |
-| ビルド | TypeScript compilerおよびesbuild |
-| 配布 | npm executable package |
+まだ自動生成はしない。
 
-### 13.2 推奨ディレクトリ構成
+---
+
+# 4. Phase 2: VS Code Extension の骨格を作る
+
+まず VS Code Extension を作る。
+
+MVP に必要なのは以下の3機能のみ。
 
 ```text
-src/
-  cli.ts
-  model/
-    review.ts
-    diff.ts
-    report.ts
-  review/
-    load.ts
-    validate.ts
-    semantic-validation.ts
-  diff/
-    parse.ts
-    normalize-path.ts
-    line-index.ts
-  correlate/
-    resolve-locations.ts
-    detect-unexplained-changes.ts
-  render/
-    render-html.ts
-    escape.ts
-    styles.ts
-  diagnostics.ts
-
-tests/
-  fixtures/
-  schema.test.ts
-  diff.test.ts
-  correlate.test.ts
-  render.test.ts
-  cli.test.ts
+Extension
+├─ Flow View
+├─ Source / Diff Navigation
+└─ Explanation Rendering
 ```
 
-## 14. テスト要件
+最初は UI を洗練させず、機能確認を優先する。
 
-### 14.1 Schema検証テスト
+---
 
-- 現在の`sample.json`が成功する。
-- 必須項目欠落が失敗する。
-- 未知プロパティが失敗する。
-- 不正なriskが失敗する。
-- 0以下の行番号が失敗する。
-- 対応外versionが失敗する。
-- 人間確認が必要なのにfocusがない場合に失敗する。
+# 5. Phase 3: Flow View を作る
 
-### 14.2 意味検証テスト
+VS Code の左サイドバーに専用 View を追加する。
 
-- Change Unit ID重複を検出する。
-- `end_line < start_line`を検出する。
-- 絶対パスを拒否する。
-- リポジトリ外へ出る`..`を拒否する。
+想定 UI:
 
-### 14.3 diff解析テスト
+```text
+CHANGE
+最後に与えた時変値を自動で記録
 
-- 通常のファイル変更
-- 新規ファイル
-- 削除ファイル
-- rename
-- copy
-- modeのみの変更
-- binary
-- submodule
-- 空白および日本語を含むパス
-- quoteされたGit path
-- CRLF入力
-- ファイル末尾の改行なし
-- 複数hunk
-- 空diff
-- combined diffの拒否
+Flow: Replay execution ▼
 
-### 14.4 対応付けテスト
+✓ Replay モードを選択
+✓ execution mode を送信
+→ 保存済み trace を読み込む
+○ Debugger へ入力源を登録
+○ 既存経路で実行
+```
 
-- new sideの追加行
-- old sideの削除行
-- context行
-- rename前後のパス
-- 単一行と複数行範囲
-- 複数Change Unitが同じ行を参照する場合
-- 一部だけhunkに含まれる範囲
-- diff外のReference
-- binaryファイルへの行参照
-- new sideの変更行がImplementation Sectionによって説明済みになること
-- old sideの変更行がImplementation Sectionによって説明済みになること
-- 同じpathと行範囲がold側とnew側の両方に一致する場合、両側の変更行が説明済みになること
-- renameまたはcopyでold pathとnew pathを正しい側へ対応付けること
-- 行番号を持たないImplementation Sectionがテキスト変更行を説明済みにしないこと
-- rename、copy、mode変更、バイナリ変更をファイル単位で照合すること
-- 未解決または一部解決のImplementation Sectionでは、実際に解決した変更行だけを説明済みにすること
-- Referenceだけが対応付けられた変更行を未説明として検出すること
-- 連続する未説明行を同じfile、side、hunk内で集約すること
+複数 Flow を切り替えられるようにする。
 
-### 14.5 HTMLおよびセキュリティテスト
+例:
 
-- `<script>`が実行可能なHTMLにならない。
-- HTML属性を閉じる入力がエスケープされる。
-- `javascript:` URLがリンクにならない。
-- パスとコードの空白が保持される。
-- すべての内部アンカーが一意である。
-- すべての内部リンクにリンク先が存在する。
-- CSPが含まれる。
-- 外部リソース参照が存在しない。
-- 未説明変更の警告にpath、side、行範囲または変更種別が表示される。
-- 未説明変更の警告からファイル別diffの該当箇所へ移動できる。
-- ファイル別diffの該当箇所に未説明マーカーが表示される。
-- スナップショットHTMLが期待する構造を持つ。
+```text
+Replay execution
+Trace persistence
+Error propagation
+```
 
-### 14.6 CLI統合テスト
+実装方法はまず標準 `TreeView` を使用する。
 
-- ファイル入力からHTMLを生成できる。
-- 標準入力からdiffを受け取れる。
-- HTMLを標準出力へ出せる。
-- 診断メッセージが標準エラーへ出る。
-- 未説明変更がある場合もHTMLを生成し、終了コード`0`を返す。
-- 未説明変更の警告コードと該当箇所が標準エラーへ出る。
-- エラー種別ごとに所定の終了コードを返す。
-- 出力失敗時に正常終了しない。
+Flow 切り替えは以下のいずれかでよい。
 
-## 15. MVP受け入れ基準
+- Tree View 内の親ノード
+- QuickPick
+- View Title の command
 
-以下をすべて満たした時点でMVP完成とする。
+MVP では最も簡単な方法を選ぶ。
 
-1. `sample.json`相当のレビューJSONと通常のGit diffから単一HTMLを生成できる。
-2. 追加、変更、削除、rename、binaryの各変更を識別して表示できる。
-3. Change Unitから対応するdiff行へ移動できる。
-4. diff行から関連するChange Unitを確認できる。
-5. 人間確認が必要なChange Unitと確認観点がレポート上部から把握できる。
-6. 未解決参照と理由がHTMLおよび標準エラーから確認できる。
-7. Implementation Sectionで説明されていない変更を警告し、そのpath、side、行範囲または変更種別をHTMLおよび標準エラーから確認でき、該当diffをHTMLから確認できる。
-8. 不正JSON、不正schema、非対応diffを正常結果として扱わない。
-9. 入力に含まれるHTMLやscriptを実行しない。
-10. HTMLをネットワーク接続なしで閲覧および印刷できる。
-11. 主要なparser、対応付け、セキュリティ、CLIテストが自動化されている。
+---
 
-## 16. 将来拡張
+# 6. Phase 4: Flow Step → Source Location の Navigation
 
-MVP完成後、必要性を確認して次を検討する。
+Flow Step を選択したとき、その Step に紐づく Source Location へ移動する。
 
-- side-by-side diff表示
-- クライアント側のリスク・ファイル絞り込み
-- syntax highlighting
-- 大規模diff向けの遅延表示
-- GitHub、GitLab等へのソースリンクプリセット
-- SARIFなど機械処理向け形式の併記
-- 複数レビューJSONの統合
-- レビュー結果間の差分表示
-- 人間の確認結果を別ファイルとして保存する機能
-- 単一ネイティブバイナリまたはコンテナでの配布
-- combined diffへの対応
+まず通常の source file で動作させる。
 
-これらの拡張でも、単一HTMLの可搬性、入力の非信頼性、AI判断と事実の区別を維持する。
+概念:
+
+```ts
+FlowStep
+   ↓
+locationIds
+   ↓
+SourceLocation
+   ↓
+showTextDocument()
+   ↓
+revealRange()
+```
+
+Step に複数の Source Location がある場合は、
+
+```text
+Step
+├─ Location A
+├─ Location B
+└─ Location C
+```
+
+として子ノードとして表示してもよい。
+
+または Step を再度実行することで順番に移動してもよい。
+
+MVP では単純な Tree 表示を優先する。
+
+---
+
+# 7. Phase 5: Git Diff に統合する
+
+通常 source へのジャンプが完成したら、Git Diff を表示する。
+
+対象は、
+
+```text
+baseRevision
+    vs
+targetRevision
+```
+
+とする。
+
+各 Source Location のファイルについて、変更前と変更後の内容を取得する。
+
+標準 VS Code Diff Editor を優先的に使用する。
+
+イメージ:
+
+```text
+┌──────── Flow ────────┐
+│ Replay execution     │
+│                      │
+│ ✓ UI selection       │
+│ ✓ protocol           │
+│ → trace loading      │
+│ ○ debugger setup     │
+└──────────────────────┘
+
+┌──────── Git Diff ─────────────────┐
+│ input_trace_manager.py            │
+│                                   │
+│ - old implementation              │
+│ + new implementation              │
+│                                   │
+│ + class SavedInputTraceIter(...)  │
+└───────────────────────────────────┘
+```
+
+Flow Step をクリックすると、
+
+1. 対象ファイルの Diff を開く
+2. 対象 Source Location へスクロールする
+3. 対象範囲を視覚的に強調する
+
+ところまで実装する。
+
+---
+
+# 8. Phase 6: Source Explanation を表示する
+
+変更箇所には AI 生成予定の説明を表示する。
+
+説明の基本 schema は以下。
+
+```ts
+type Explanation = {
+  locationId: string
+  title: string
+  role: string
+  why?: string
+  watch?: string[]
+}
+```
+
+説明を書く際は以下を守る。
+
+## Role
+
+このコードが今回の実装全体で何を担っているかを書く。
+
+悪い例:
+
+```text
+ファイルを開いて1行ずつ読み込む。
+```
+
+良い例:
+
+```text
+保存済みの入力履歴を既存の InputInterface として
+再生可能な状態へ復元する。
+```
+
+## Why
+
+コードから自明でない設計理由を書く。
+
+例:
+
+```text
+Replay 専用の実行ループを作らず、
+既存の入力抽象を再利用するため。
+```
+
+## Watch
+
+重要な制約、分岐、副作用のみを書く。
+
+例:
+
+```text
+- program ID 不一致は読み込み失敗として扱う
+- 不正レコードも同様に Failure にする
+```
+
+---
+
+# 9. Explanation UI
+
+最終的には GitHub Review Comment に近い UI を目指す。
+
+イメージ:
+
+```text
+  40  class SavedInputTraceIter(InputInterface):
+  41      ...
+  42
+      ┌──────────────────────────────────────┐
+      │ 保存済み trace を入力源へ復元       │
+      │                                      │
+      │ 保存履歴を InputInterface として     │
+      │ Debugger に渡せる状態にする。        │
+      │                                      │
+      │ Why                                  │
+      │ 既存の入力経路を再利用するため。     │
+      └──────────────────────────────────────┘
+```
+
+ただし MVP では、Comments API に強く依存しなくてもよい。
+
+最初の実装候補:
+
+1. CodeLens
+2. Decoration + Hover
+3. Comments API
+
+の順で検討する。
+
+最も少ない実装量で、
+
+> コードと説明を併置すると理解が速くなるか
+
+を検証できる手段を選ぶ。
+
+Comments API の UX が自然なら後から置き換える。
+
+---
+
+# 10. Source Location の強調
+
+現在 Flow 上で選択している Source Location をコード上でも明示する。
+
+例:
+
+```text
+Replay execution
+
+✓ UI selection
+✓ protocol
+→ trace loading  ← current
+○ debugger setup
+```
+
+エディタ側:
+
+```text
+┃ class SavedInputTraceIter(...)
+┃
+┃     def load_saved_trace(...):
+┃         ...
+```
+
+`TextEditorDecorationType` 等を使い、
+
+- gutter
+- border
+- background
+- overview ruler
+
+のいずれかで対象範囲を軽く強調する。
+
+強調しすぎて通常の syntax highlighting を壊さないこと。
+
+---
+
+# 11. Full Source への移動
+
+Diff だけでは周辺 context が足りない場合がある。
+
+そのため Explanation あるいは command から、
+
+```text
+Open Full Source
+```
+
+を実行できるようにする。
+
+役割分担は以下。
+
+```text
+Diff
+変更内容を理解する
+
+Full Source
+既存コード中での位置づけを理解する
+```
+
+Full Source でも該当 Source Location を reveal / highlight する。
+
+---
+
+# 12. Phase 7: HTML Implementation Overview
+
+VS Code UI と並行して、HTML では変更全体を俯瞰する。
+
+HTML にはコード詳細を大量に表示しない。
+
+表示内容は以下に限定する。
+
+```text
+Change Title
+
+Implementation Overview
+
+Summary
+...
+
+Implementation
+- ...
+- ...
+- ...
+
+Flows
+- Replay execution
+- Trace persistence
+- Error propagation
+
+Changed Files
+9 files
+```
+
+必要に応じて、
+
+```text
+Open in VS Code
+```
+
+を用意する。
+
+HTML の責務は、
+
+> 何を理解する必要があるかを把握する
+
+こと。
+
+VS Code の責務は、
+
+> それをどのコードでどう実現しているか理解する
+
+こと。
+
+---
+
+# 13. HTML → VS Code Integration
+
+MVP では一方向だけでよい。
+
+HTML 側から例えば、
+
+```text
+Open Replay execution in VS Code
+```
+
+を押すと対象 Flow を開く。
+
+URI Handler を使う場合は例えば、
+
+```text
+vscode://<extension-id>/review?flow=replay-execution
+```
+
+のような形を検討する。
+
+双方向同期は後回しにする。
+
+---
+
+# 14. Phase 8: AI Schema Generation
+
+UI が有効であることを確認してから AI 生成を導入する。
+
+AI への入力候補:
+
+```text
+Change request
+base source
+target source
+git diff
+repository context
+```
+
+AI には以下を生成させる。
+
+1. Implementation Overview
+2. 実装理解に有効な Flow
+3. 各 Flow の Step
+4. Flow Step と Source Location の対応
+5. 各 Source Location の Explanation
+
+生成ルール:
+
+```text
+- Git hunk 単位で説明を分割しない
+- 意味のある実装単位で Source Location を選ぶ
+- コードを逐語訳しない
+- 実装全体における役割を最優先する
+- 前後の処理との接続関係を意識する
+- コードから自明でない設計理由を書く
+- 重要な条件・副作用・失敗ケースのみ Watch とする
+```
+
+AI が生成した schema は JSON Schema 等で validation する。
+
+---
+
+# 15. MVP 完成条件
+
+以下がすべてできれば MVP 完成とする。
+
+- 変更1件を `review.json` として読み込める
+- HTML で Implementation Overview を確認できる
+- VS Code 左ペインに複数 Flow を表示できる
+- Flow を切り替えられる
+- Flow Step を選択すると対象 source / diff へ移動する
+- 現在位置が Flow 上で分かる
+- 対象コード範囲がエディタ上で分かる
+- 対象コードに Implementation Explanation が表示される
+- 必要に応じて Full Source を開ける
+
+---
+
+# 16. MVP では実装しないもの
+
+以下は後回しにする。
+
+- Evidence
+- リスク判定
+- AI による正誤レビュー
+- GitHub PR 連携
+- GitHub API 連携
+- 複数人レビュー
+- コメント編集
+- runtime tracing
+- symbol graph の高度な解析
+- data-flow / control-flow の静的解析
+- working tree へのリアルタイム追従
+- branch を含む高度な Flow graph
+- Flow 自動レイアウト
+- commit ごとの履歴 UI
+- Change Unit
+- 自動修正
+- レビュー承認機能
+
+---
+
+# 17. 推奨実装順序
+
+以下の順で進める。
+
+```text
+Phase 1
+Schema 定義
++
+手書き review.json fixture
+
+        ↓
+
+Phase 2
+VS Code Extension の骨格
+
+        ↓
+
+Phase 3
+Flow Tree View
+
+        ↓
+
+Phase 4
+Flow Step → Full Source Navigation
+
+        ↓
+
+Phase 5
+Git Diff Integration
+
+        ↓
+
+Phase 6
+Source Location Highlight
+
+        ↓
+
+Phase 7
+Explanation 表示
+
+        ↓
+
+Phase 8
+HTML Implementation Overview
+
+        ↓
+
+Phase 9
+HTML → VS Code 連携
+
+        ↓
+
+Phase 10
+AI Schema Generation
+```
+
+---
+
+# 18. 各 Phase の進め方
+
+各 Phase では、実装前に以下を明示する。
+
+```text
+今回やること
+- ...
+
+今回やらないこと
+- ...
+```
+
+実装後は必ず実際に動作確認する。
+
+一度に複数 Phase を実装せず、各 Phase の UI / UX が成立していることを確認してから次へ進む。
+
+特に以下の順序を守る。
+
+```text
+手動データで UX を確認
+        ↓
+UI を固定
+        ↓
+schema を固定
+        ↓
+最後に AI 生成を自動化
+```
+
+AI 生成精度の改善を、UI 検証より先に行わないこと。
+
+---
+
+# 19. MVP で最も確認したいこと
+
+技術的な完成度より、以下を検証する。
+
+## 仮説1
+
+Flow 順にコードを読むことで、通常の Git diff より実装全体の理解が速いか。
+
+## 仮説2
+
+コード横の Explanation によって、
+
+```text
+このコードは何のために存在するのか
+```
+
+を推測する時間が減るか。
+
+## 仮説3
+
+Diff を中心にしながら必要時だけ Full Source を確認することで、
+
+```text
+diff の文脈不足
+```
+
+と
+
+```text
+source 全体を読むコスト
+```
+
+の両方を抑えられるか。
+
+## 仮説4
+
+Implementation Overview → Flow → Source という粒度移動が自然か。
+
+MVP の設計判断は、これらの仮説検証を最優先すること。
