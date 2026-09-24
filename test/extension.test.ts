@@ -7,12 +7,13 @@ type ModuleLoader = (request: string, parent: unknown, isMain: boolean) => unkno
 
 it("commandからOverviewを開き、openFlowメッセージを受信する", async () => {
   type CommandHandler = (...args: unknown[]) => unknown;
-  type TreeElement = { kind: "flow" | "step" };
+  type TreeElement = { kind: "flow" | "step" | "location" };
   type TreeDataProvider = {
     getChildren(element?: TreeElement): TreeElement[];
     getTreeItem(element: TreeElement): {
       label: string;
       description?: string;
+      collapsibleState: number;
       command?: { command: string; arguments?: unknown[] };
     };
   };
@@ -43,6 +44,23 @@ it("commandからOverviewを開き、openFlowメッセージを受信する", as
   let webviewHtml = "";
   const informationMessages: string[] = [];
   const outputLines: string[] = [];
+  const shownDocuments: string[] = [];
+  const revealedRanges: Array<{
+    startLine: number;
+    startCharacter: number;
+    endLine: number;
+    endCharacter: number;
+    revealType: number;
+  }> = [];
+
+  class MockRange {
+    constructor(
+      readonly startLine: number,
+      readonly startCharacter: number,
+      readonly endLine: number,
+      readonly endCharacter: number,
+    ) {}
+  }
 
   const vscodeMock = {
     Uri: {
@@ -51,6 +69,7 @@ it("commandからOverviewを開き、openFlowメッセージを受信する", as
       },
     },
     EventEmitter: MockEventEmitter,
+    Range: MockRange,
     TreeItem: MockTreeItem,
     TreeItemCollapsibleState: {
       None: 0,
@@ -58,10 +77,21 @@ it("commandからOverviewを開き、openFlowメッセージを受信する", as
       Expanded: 2,
     },
     ViewColumn: { One: 1 },
+    TextEditorRevealType: { InCenter: 1 },
     workspace: {
+      workspaceFolders: [
+        { uri: { fsPath: "/missing-workspace" } },
+        { uri: { fsPath: "/workspace" } },
+      ],
       fs: {
         async readFile(uri: { fsPath: string }) {
           return new Uint8Array(readFileSync(uri.fsPath));
+        },
+        async stat(uri: { fsPath: string }) {
+          if (uri.fsPath.startsWith("/missing-workspace/")) {
+            throw new Error("file not found");
+          }
+          return { type: 1 };
         },
       },
     },
@@ -105,6 +135,20 @@ it("commandからOverviewを開き、openFlowメッセージを受信する", as
       },
       async showErrorMessage(message: string) {
         assert.fail(message);
+      },
+      async showTextDocument(uri: { fsPath: string }) {
+        shownDocuments.push(uri.fsPath);
+        return {
+          revealRange(range: MockRange, revealType: number) {
+            revealedRanges.push({
+              startLine: range.startLine,
+              startCharacter: range.startCharacter,
+              endLine: range.endLine,
+              endCharacter: range.endCharacter,
+              revealType,
+            });
+          },
+        };
       },
     },
   };
@@ -150,13 +194,48 @@ it("commandからOverviewを開き、openFlowメッセージを受信する", as
     assert.ok(thirdStepItem.command);
     const selectThirdStep = commandHandlers.get(thirdStepItem.command.command);
     assert.ok(selectThirdStep);
-    selectThirdStep(...(thirdStepItem.command.arguments ?? []));
+    await selectThirdStep(...(thirdStepItem.command.arguments ?? []));
+
+    assert.deepEqual(shownDocuments, [
+      join("/workspace", "python/emfrp_debugger/vscode_adapter/request.py"),
+    ]);
+    assert.deepEqual(revealedRanges, [{
+      startLine: 14,
+      startCharacter: 0,
+      endLine: 20,
+      endCharacter: 0,
+      revealType: 1,
+    }]);
 
     replaySteps = treeDataProvider.getChildren(flows[0]);
     assert.match(treeDataProvider.getTreeItem(replaySteps[0]).label, /^✓ /);
     assert.match(treeDataProvider.getTreeItem(replaySteps[1]).label, /^✓ /);
     assert.match(treeDataProvider.getTreeItem(replaySteps[2]).label, /^→ /);
     assert.match(treeDataProvider.getTreeItem(replaySteps[3]).label, /^○ /);
+
+    const multiLocationStep = replaySteps[1];
+    assert.equal(treeDataProvider.getTreeItem(multiLocationStep).collapsibleState, 1);
+    const locations = treeDataProvider.getChildren(multiLocationStep);
+    assert.equal(locations.length, 3);
+    assert.equal(treeDataProvider.getTreeItem(locations[0]).label, "engineProtocol.ts");
+    assert.equal(treeDataProvider.getTreeItem(locations[0]).description, "L98-101");
+
+    const secondLocationItem = treeDataProvider.getTreeItem(locations[1]);
+    assert.ok(secondLocationItem.command);
+    const openSecondLocation = commandHandlers.get(secondLocationItem.command.command);
+    assert.ok(openSecondLocation);
+    await openSecondLocation(...(secondLocationItem.command.arguments ?? []));
+    assert.equal(
+      shownDocuments.at(-1),
+      join("/workspace", "vscode-extension/emdb/package.json"),
+    );
+    assert.deepEqual(revealedRanges.at(-1), {
+      startLine: 227,
+      startCharacter: 0,
+      endLine: 238,
+      endCharacter: 0,
+      revealType: 1,
+    });
 
     const secondFlowItem = treeDataProvider.getTreeItem(flows[1]);
     assert.ok(secondFlowItem.command);

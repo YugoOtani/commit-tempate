@@ -1,5 +1,10 @@
 import * as vscode from "vscode";
-import type { ChangeReview, Flow, FlowStep } from "../review/schema";
+import type {
+  ChangeReview,
+  Flow,
+  FlowStep,
+  SourceLocation,
+} from "../review/schema";
 
 export const selectFlowCommand = "aiChangeReview.flow.selectFlow";
 export const selectStepCommand = "aiChangeReview.flow.selectStep";
@@ -17,6 +22,12 @@ type FlowTreeElement =
     flowId: string;
     step: FlowStep;
     status: StepStatus;
+  }
+  | {
+    kind: "location";
+    flowId: string;
+    stepId: string;
+    location: SourceLocation;
   };
 
 const stepMarkers: Record<StepStatus, string> = {
@@ -84,17 +95,37 @@ export class FlowTreeDataProvider implements vscode.TreeDataProvider<FlowTreeEle
       return item;
     }
 
+    if (element.kind === "step") {
+      const item = new vscode.TreeItem(
+        `${stepMarkers[element.status]} ${element.step.title}`,
+        element.step.locationIds.length > 1
+          ? element.status === "current"
+            ? vscode.TreeItemCollapsibleState.Expanded
+            : vscode.TreeItemCollapsibleState.Collapsed
+          : vscode.TreeItemCollapsibleState.None,
+      );
+      item.description = element.status === "current" ? "current" : undefined;
+      item.tooltip = element.step.description ?? element.step.title;
+      item.contextValue = `flowStep.${element.status}`;
+      item.command = {
+        command: selectStepCommand,
+        title: "Stepを選択",
+        arguments: [element.flowId, element.step.id],
+      };
+      return item;
+    }
+
     const item = new vscode.TreeItem(
-      `${stepMarkers[element.status]} ${element.step.title}`,
+      fileName(element.location.file),
       vscode.TreeItemCollapsibleState.None,
     );
-    item.description = element.status === "current" ? "current" : undefined;
-    item.tooltip = element.step.description ?? element.step.title;
-    item.contextValue = `flowStep.${element.status}`;
+    item.description = lineDescription(element.location);
+    item.tooltip = `${element.location.file}:${element.location.startLine}-${element.location.endLine}`;
+    item.contextValue = "sourceLocation";
     item.command = {
       command: selectStepCommand,
-      title: "Stepを選択",
-      arguments: [element.flowId, element.step.id],
+      title: "SourceLocationを開く",
+      arguments: [element.flowId, element.stepId, element.location.id],
     };
     return item;
   }
@@ -112,8 +143,26 @@ export class FlowTreeDataProvider implements vscode.TreeDataProvider<FlowTreeEle
       }));
     }
 
-    if (element.kind === "step") {
+    if (element.kind === "location") {
       return [];
+    }
+
+    if (element.kind === "step") {
+      if (element.step.locationIds.length <= 1) {
+        return [];
+      }
+
+      return element.step.locationIds.flatMap((locationId) => {
+        const location = this.review?.locations.find((candidate) => candidate.id === locationId);
+        return location
+          ? [{
+            kind: "location" as const,
+            flowId: element.flowId,
+            stepId: element.step.id,
+            location,
+          }]
+          : [];
+      });
     }
 
     const currentIndex = element.flow.id === this.activeFlowId
@@ -135,4 +184,14 @@ export class FlowTreeDataProvider implements vscode.TreeDataProvider<FlowTreeEle
   dispose(): void {
     this.treeDataChanged.dispose();
   }
+}
+
+function fileName(file: string): string {
+  return file.split("/").at(-1) ?? file;
+}
+
+function lineDescription(location: SourceLocation): string {
+  return location.startLine === location.endLine
+    ? `L${location.startLine}`
+    : `L${location.startLine}-${location.endLine}`;
 }
