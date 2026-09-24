@@ -1,69 +1,136 @@
-# AI Change Review MVP 実装手順
+# AI Change Review MVP 仕様書
 
-## 目的
+## 1. 目的
 
-AI が実装した変更について、人間が「自分で実装した場合に近い理解」を短時間で形成できるレビュー UI を作る。
+AI が実装した変更について、人間が短時間で、
 
-MVP では、以下の体験を実現する。
+- 何を実装したか
+- どのような構造で実現したか
+- 実際にどのコードを変更したか
+- 各変更箇所が実装全体の中で何を担うか
 
-1. HTML で変更全体の実装概要を把握する
-2. VS Code 上で複数の実装フローから読みたいフローを選択する
-3. フローの各 Step を辿ると、その Step に対応する Git 差分へ移動する
-4. 変更箇所のコード上に、その実装上の役割・理由・注意点を表示する
-5. 必要に応じて周辺コードを確認する
+を理解できる VS Code Extension を作る。
 
-MVP の主な検証テーマは以下。
+目標は単なる AI Code Review ではない。
 
-> Flow 順に差分を読むことで、通常のファイル順 diff より実装理解までの時間を短縮できるか。
+> AI が書いたコードについて、自分で実装した場合に近い mental model を形成するまでの時間を短縮する。
 
-高度な自動解析やレビュー機能は、この仮説を確認した後に追加する。
+MVP では特に、
+
+> 実装概要 → Flow → Git Diff → Source Explanation
+
+という順序でコードを読むことが、通常のファイル順 diff より理解を速めるかを検証する。
 
 ---
 
-# 1. 基本コンセプト
+# 2. UX 全体像
 
-レビュー対象の中心概念を Git commit ではなく `Change` とする。
+VS Code 内で以下の3つを組み合わせる。
 
-`Change` は、ある変更要求に対して行われた一連の実装を表す。
+```text
+┌──────────────── VS Code ──────────────────────────────┐
+│                                                       │
+│  Overview Webview                                     │
+│  ┌─────────────────────────────────────────────────┐  │
+│  │ Implementation Overview                         │  │
+│  │                                                 │  │
+│  │ Summary                                         │  │
+│  │ Implementation                                  │  │
+│  │ Available Flows                                 │  │
+│  │                                                 │  │
+│  │ [Open Replay Flow]                              │  │
+│  └─────────────────────────────────────────────────┘  │
+│                                                       │
+│  Sidebar                      Editor                   │
+│  ┌─────────────────┐         ┌─────────────────────┐  │
+│  │ Flow Navigator  │         │ Git Diff            │  │
+│  │                 │         │                     │  │
+│  │ Replay ▼        │         │ changed code        │  │
+│  │                 │         │                     │  │
+│  │ ✓ UI select     │         │ 💬 Explanation     │  │
+│  │ ✓ protocol      │         │                     │  │
+│  │ → trace load    │         │ changed code        │  │
+│  │ ○ debugger      │         │                     │  │
+│  └─────────────────┘         └─────────────────────┘  │
+│                                                       │
+└───────────────────────────────────────────────────────┘
+```
+
+役割は明確に分ける。
+
+## Overview Webview
+
+変更全体を俯瞰する。
+
+答える質問:
+
+> 今回、何をどのように実装したのか。
+
+## Flow Tree View
+
+実装を理解する順番を提示する。
+
+答える質問:
+
+> この機能はどのような処理の流れで実現されているのか。
+
+## Git Diff Editor
+
+実際の変更コードを読む。
+
+答える質問:
+
+> 具体的にどのコードを変更したのか。
+
+## Source Explanation
+
+変更箇所の意味を補足する。
+
+答える質問:
+
+> この変更箇所は実装全体の中で何を担っているのか。
+
+---
+
+# 3. 中心概念
+
+レビュー対象は Git commit ではなく `Change` とする。
+
+`Change` は、一つの変更要求に対して行われた実装全体を表す。
 
 ```text
 Change Request
-      ↓
+
+     ↓
+
 base revision
-      ↓
+
+     ↓
+
 implementation
-      ↓
+
+     ↓
+
 target revision
 ```
 
-Git の revision は変更前後のソースコードを取得するための技術情報として扱い、ユーザーが理解する単位にはしない。
+Git revision は、変更前後のソースコードを取得するための技術情報でしかない。
 
-UI の基本構造は以下。
-
-```text
-HTML
-Implementation Overview
-        ↓
-VS Code
-Flow Navigator
-        ↓
-Git Diff
-        ↓
-Inline Explanation
-        ↓
-必要なら Full Source
-```
+UI 上では commit を中心概念にしない。
 
 ---
 
-# 2. MVP Schema
+# 4. MVP Schema
 
-まず以下の schema を採用する。
+以下を正本とする。
 
 ```ts
 type ChangeReview = {
   change: {
+    id: string
     title: string
+    request?: string
+
     baseRevision: string
     targetRevision: string
   }
@@ -76,72 +143,78 @@ type ChangeReview = {
   flows: {
     id: string
     title: string
+    description?: string
+
     steps: {
       id: string
       title: string
+      description?: string
       locationIds: string[]
     }[]
   }[]
 
   locations: {
     id: string
+
     file: string
+
     startLine: number
     endLine: number
   }[]
 
   explanations: {
     locationId: string
+
     title: string
     role: string
+
     why?: string
     watch?: string[]
   }[]
 }
 ```
 
-## 設計方針
+---
+
+# 5. Schema の設計方針
 
 以前使用していた `ChangeUnit` は導入しない。
 
-代わりに、
+情報構造は以下とする。
 
 ```text
 Change
-  ├─ Overview
-  ├─ Flow
-  │    └─ FlowStep
-  │          └─ SourceLocation
-  │
-  └─ Explanation
-            ↓
-      SourceLocation
+│
+├─ Overview
+│
+├─ Flow
+│   └─ Flow Step
+│       └─ Source Location
+│
+└─ Explanation
+    └─ Source Location
 ```
 
-という構造にする。
+`SourceLocation` を中心ノードとして扱う。
 
-`SourceLocation` を各情報を結びつける中心ノードとして扱う。
+Flow と Explanation の両方が SourceLocation を参照する。
 
 ---
 
-# 3. Phase 1: 手書き Fixture を作る
-
-最初から AI に schema を生成させない。
-
-まず実際の変更一件を選び、人間が手動で `review.json` を作成する。
-
-例:
+# 6. Review JSON 例
 
 ```json
 {
   "change": {
+    "id": "change-001",
     "title": "最後に与えた時変値を自動で記録・再生する",
+    "request": "最後に与えた時変値を自動的に保存し、次回起動時に再生できるようにする",
     "baseRevision": "BASE_SHA",
     "targetRevision": "TARGET_SHA"
   },
 
   "overview": {
-    "summary": "保存済み入力履歴を再生する user-replay モードを追加する。",
+    "summary": "保存済み入力履歴を再生する user-replay モードを追加した。",
     "implementation": [
       "VS Code から Python まで execution mode を伝播する",
       "保存済み trace を InputInterface として復元する",
@@ -153,12 +226,16 @@ Change
     {
       "id": "replay-execution",
       "title": "Replay execution",
+      "description": "ユーザーが Replay を選択してから保存済み入力で実行されるまで",
       "steps": [
         {
           "id": "select-replay",
           "title": "Replay モードを選択する",
-          "locationIds": ["loc-select-replay"]
+          "locationIds": [
+            "loc-select-replay"
+          ]
         },
+
         {
           "id": "send-mode",
           "title": "execution mode を Python へ送る",
@@ -167,15 +244,21 @@ Change
             "loc-python-request"
           ]
         },
+
         {
           "id": "load-trace",
           "title": "保存済み trace を読み込む",
-          "locationIds": ["loc-load-trace"]
+          "locationIds": [
+            "loc-load-trace"
+          ]
         },
+
         {
           "id": "attach-input",
           "title": "Debugger へ入力源を登録する",
-          "locationIds": ["loc-debugger-input"]
+          "locationIds": [
+            "loc-debugger-input"
+          ]
         }
       ]
     }
@@ -205,51 +288,141 @@ Change
 }
 ```
 
-## この Phase の目的
-
-schema が実際の UI を表現するのに十分か確認する。
-
-まだ自動生成はしない。
-
 ---
 
-# 4. Phase 2: VS Code Extension の骨格を作る
+# 7. Overview Webview
 
-まず VS Code Extension を作る。
+## 7.1 目的
 
-MVP に必要なのは以下の3機能のみ。
+変更全体をコードを見る前に理解する。
+
+Webview では細かな diff を表示しない。
+
+表示内容は以下に限定する。
 
 ```text
-Extension
-├─ Flow View
-├─ Source / Diff Navigation
-└─ Explanation Rendering
+Change title
+
+Implementation Overview
+
+Summary
+
+Implementation
+- ...
+- ...
+- ...
+
+Flows
+- Replay execution
+- Trace persistence
+- Error propagation
 ```
 
-最初は UI を洗練させず、機能確認を優先する。
+---
+
+## 7.2 想定 UI
+
+```text
+┌─────────────────────────────────────────────┐
+│ 最後に与えた時変値を自動で記録・再生       │
+├─────────────────────────────────────────────┤
+│                                             │
+│ Implementation Overview                     │
+│                                             │
+│ 保存済み入力履歴を user-replay mode で      │
+│ 再生できるようにする。                      │
+│                                             │
+│ Implementation                              │
+│                                             │
+│ ✓ execution mode を VSCode → Python に伝播 │
+│ ✓ trace を InputInterface へ復元            │
+│ ✓ 既存 Debugger 経路を再利用               │
+│                                             │
+│ Flows                                       │
+│                                             │
+│ Replay execution          4 steps   [Open] │
+│ Trace persistence         3 steps   [Open] │
+│ Error propagation         4 steps   [Open] │
+│                                             │
+└─────────────────────────────────────────────┘
+```
 
 ---
 
-# 5. Phase 3: Flow View を作る
+# 8. Webview → Flow Navigation
 
-VS Code の左サイドバーに専用 View を追加する。
+Flow の `Open` をクリックすると VS Code Extension に message を送る。
 
-想定 UI:
+例:
+
+```ts
+vscode.postMessage({
+  type: "openFlow",
+  flowId: "replay-execution"
+})
+```
+
+Extension 側では以下を行う。
 
 ```text
-CHANGE
-最後に与えた時変値を自動で記録
+openFlow(flowId)
 
-Flow: Replay execution ▼
+↓
+Flow Tree を該当 Flow へ切り替える
+
+↓
+最初の Step を current にする
+
+↓
+最初の SourceLocation の diff を開く
+```
+
+Overview Webview は「実装理解の開始地点」とする。
+
+---
+
+# 9. Flow Navigator
+
+## 9.1 実装
+
+VS Code の標準 `TreeView` を使用する。
+
+MVP では Webview で Flow Graph を描画しない。
+
+---
+
+## 9.2 表示
+
+```text
+Replay execution
 
 ✓ Replay モードを選択
+
 ✓ execution mode を送信
+
 → 保存済み trace を読み込む
+  ↑ current
+
 ○ Debugger へ入力源を登録
+
 ○ 既存経路で実行
 ```
 
-複数 Flow を切り替えられるようにする。
+状態は最低限以下を持つ。
+
+```text
+completed
+current
+remaining
+```
+
+厳密なレビュー完了状態ではなく、ナビゲーション上の現在位置として扱う。
+
+---
+
+# 10. Flow 切り替え
+
+一つの Change は複数 Flow を持てる。
 
 例:
 
@@ -259,60 +432,51 @@ Trace persistence
 Error propagation
 ```
 
-実装方法はまず標準 `TreeView` を使用する。
+MVP では以下のいずれかを使用する。
 
-Flow 切り替えは以下のいずれかでよい。
+優先順位:
 
-- Tree View 内の親ノード
-- QuickPick
-- View Title の command
+1. TreeView 内に Flow root を並べる
+2. QuickPick
+3. View Title の command
 
-MVP では最も簡単な方法を選ぶ。
+まず最も実装が簡単な方法を採用する。
 
 ---
 
-# 6. Phase 4: Flow Step → Source Location の Navigation
+# 11. Flow Step → Source Location
 
-Flow Step を選択したとき、その Step に紐づく Source Location へ移動する。
-
-まず通常の source file で動作させる。
-
-概念:
-
-```ts
-FlowStep
-   ↓
-locationIds
-   ↓
-SourceLocation
-   ↓
-showTextDocument()
-   ↓
-revealRange()
-```
-
-Step に複数の Source Location がある場合は、
+Flow Step をクリックすると Source Location を開く。
 
 ```text
-Step
-├─ Location A
-├─ Location B
-└─ Location C
+FlowStep
+
+↓ locationIds
+
+SourceLocation
+
+↓ file + range
+
+Diff Editor
 ```
 
-として子ノードとして表示してもよい。
+一つの Step が複数 SourceLocation を持つ場合は Tree の子ノードとして表示する。
 
-または Step を再度実行することで順番に移動してもよい。
+例:
 
-MVP では単純な Tree 表示を優先する。
+```text
+execution mode を Python へ送る
+├─ engineProtocol.ts
+└─ request.py
+```
 
 ---
 
-# 7. Phase 5: Git Diff に統合する
+# 12. Git Diff Integration
 
-通常 source へのジャンプが完成したら、Git Diff を表示する。
+レビューの主画面は通常 Source ではなく Git Diff とする。
 
-対象は、
+対象:
 
 ```text
 baseRevision
@@ -320,65 +484,134 @@ baseRevision
 targetRevision
 ```
 
-とする。
+---
 
-各 Source Location のファイルについて、変更前と変更後の内容を取得する。
+# 13. Diff の取得
 
-標準 VS Code Diff Editor を優先的に使用する。
-
-イメージ:
+対象 SourceLocation のファイルについて、
 
 ```text
-┌──────── Flow ────────┐
-│ Replay execution     │
-│                      │
-│ ✓ UI selection       │
-│ ✓ protocol           │
-│ → trace loading      │
-│ ○ debugger setup     │
-└──────────────────────┘
-
-┌──────── Git Diff ─────────────────┐
-│ input_trace_manager.py            │
-│                                   │
-│ - old implementation              │
-│ + new implementation              │
-│                                   │
-│ + class SavedInputTraceIter(...)  │
-└───────────────────────────────────┘
+baseRevision:file
 ```
 
-Flow Step をクリックすると、
+と
 
-1. 対象ファイルの Diff を開く
-2. 対象 Source Location へスクロールする
-3. 対象範囲を視覚的に強調する
+```text
+targetRevision:file
+```
 
-ところまで実装する。
+を取得する。
+
+取得方法は既存 Git command / Git API のうち、現在の実装環境で最も単純な方法を採用する。
+
+MVP では性能最適化は不要。
 
 ---
 
-# 8. Phase 6: Source Explanation を表示する
+# 14. Diff Editor
 
-変更箇所には AI 生成予定の説明を表示する。
+VS Code 標準 Diff Editor を優先する。
 
-説明の基本 schema は以下。
+独自 diff renderer は作らない。
 
-```ts
-type Explanation = {
-  locationId: string
-  title: string
-  role: string
-  why?: string
-  watch?: string[]
-}
+想定 UI:
+
+```text
+┌──────── Flow ────────┐
+│                      │
+│ Replay execution     │
+│                      │
+│ ✓ UI select          │
+│ ✓ protocol           │
+│ → trace loading      │
+│ ○ debugger           │
+│                      │
+└──────────────────────┘
+
+┌──────────────── Git Diff ──────────────────┐
+│ input_trace_manager.py                     │
+│                                            │
+│ - old                                      │
+│ + class SavedInputTraceIter(...)           │
+│ +     ...                                  │
+│                                            │
+│   Implementation explanation               │
+│   保存済み trace を入力源へ復元            │
+│                                            │
+└────────────────────────────────────────────┘
 ```
 
-説明を書く際は以下を守る。
+---
 
-## Role
+# 15. Source Location Navigation
 
-このコードが今回の実装全体で何を担っているかを書く。
+Flow Step を選択したら、
+
+1. 対象ファイルの Diff Editor を開く
+2. target 側の該当 range を reveal する
+3. 対象 range を highlight する
+
+ところまで行う。
+
+---
+
+# 16. Current Location Highlight
+
+Flow 上の current Step とエディタ位置を同期する。
+
+例:
+
+```text
+Flow
+
+✓ UI selection
+✓ protocol
+→ trace loading
+○ debugger
+```
+
+Editor:
+
+```text
+┃ class SavedInputTraceIter(...)
+┃
+┃     def load_saved_trace(...):
+┃         ...
+```
+
+VS Code Decoration API を使い、
+
+- gutter
+- background
+- border
+
+などで軽く強調する。
+
+通常の syntax highlight を邪魔しないこと。
+
+---
+
+# 17. Source Explanation
+
+説明は Change 全体ではなく、Source Location ごとに持つ。
+
+## 表示内容
+
+```text
+Title
+
+Role
+
+Why
+
+Watch
+```
+
+---
+
+# 18. Explanation Writing Rule
+
+## 18.1 コードの逐語訳をしない
 
 悪い例:
 
@@ -393,414 +626,603 @@ type Explanation = {
 再生可能な状態へ復元する。
 ```
 
-## Why
+---
 
-コードから自明でない設計理由を書く。
+## 18.2 Role を最優先する
+
+Role は、
+
+> このコードが今回の実装全体の中で何を担うか
+
+を書く。
+
+---
+
+## 18.3 Why
+
+コードから直接は分からない設計理由を書く。
 
 例:
 
 ```text
-Replay 専用の実行ループを作らず、
-既存の入力抽象を再利用するため。
-```
-
-## Watch
-
-重要な制約、分岐、副作用のみを書く。
-
-例:
-
-```text
-- program ID 不一致は読み込み失敗として扱う
-- 不正レコードも同様に Failure にする
+Replay 専用の実行ループを追加せず、
+既存の InputInterface を再利用するため。
 ```
 
 ---
 
-# 9. Explanation UI
+## 18.4 Watch
 
-最終的には GitHub Review Comment に近い UI を目指す。
+重要な、
 
-イメージ:
+- 前提条件
+- 分岐
+- failure
+- 副作用
+
+だけを書く。
+
+---
+
+# 19. Explanation UI
+
+最終的には GitHub Review Comment に近い inline UI を目指す。
 
 ```text
-  40  class SavedInputTraceIter(InputInterface):
-  41      ...
-  42
-      ┌──────────────────────────────────────┐
-      │ 保存済み trace を入力源へ復元       │
-      │                                      │
-      │ 保存履歴を InputInterface として     │
-      │ Debugger に渡せる状態にする。        │
-      │                                      │
-      │ Why                                  │
-      │ 既存の入力経路を再利用するため。     │
-      └──────────────────────────────────────┘
+  class SavedInputTraceIter(...):
+      ...
+
+  ┌─────────────────────────────────────┐
+  │ 保存済み trace を入力源へ復元       │
+  │                                     │
+  │ 保存履歴を InputInterface として     │
+  │ Debugger へ渡せる状態にする。        │
+  │                                     │
+  │ Why                                 │
+  │ 既存入力経路を再利用するため。      │
+  │                                     │
+  └─────────────────────────────────────┘
 ```
 
-ただし MVP では、Comments API に強く依存しなくてもよい。
+ただし MVP では表示方式を固定しない。
 
-最初の実装候補:
+検証順序:
 
 1. CodeLens
 2. Decoration + Hover
 3. Comments API
 
-の順で検討する。
+最小コストで「コード横の説明」の UX を確認する。
 
-最も少ない実装量で、
-
-> コードと説明を併置すると理解が速くなるか
-
-を検証できる手段を選ぶ。
-
-Comments API の UX が自然なら後から置き換える。
+Comments API が自然に使えるなら採用する。
 
 ---
 
-# 10. Source Location の強調
+# 20. Full Source
 
-現在 Flow 上で選択している Source Location をコード上でも明示する。
+Diff だけでは文脈不足になる場合がある。
 
-例:
-
-```text
-Replay execution
-
-✓ UI selection
-✓ protocol
-→ trace loading  ← current
-○ debugger setup
-```
-
-エディタ側:
-
-```text
-┃ class SavedInputTraceIter(...)
-┃
-┃     def load_saved_trace(...):
-┃         ...
-```
-
-`TextEditorDecorationType` 等を使い、
-
-- gutter
-- border
-- background
-- overview ruler
-
-のいずれかで対象範囲を軽く強調する。
-
-強調しすぎて通常の syntax highlighting を壊さないこと。
-
----
-
-# 11. Full Source への移動
-
-Diff だけでは周辺 context が足りない場合がある。
-
-そのため Explanation あるいは command から、
+そのため、
 
 ```text
 Open Full Source
 ```
 
-を実行できるようにする。
+command を用意する。
 
-役割分担は以下。
+開いた Source Editor でも同じ SourceLocation を reveal / highlight する。
+
+役割分担:
 
 ```text
-Diff
-変更内容を理解する
+Git Diff
+= 今回どう変更したか
 
 Full Source
-既存コード中での位置づけを理解する
+= 既存コードの中でどう位置づけられるか
 ```
-
-Full Source でも該当 Source Location を reveal / highlight する。
 
 ---
 
-# 12. Phase 7: HTML Implementation Overview
+# 21. Webview と Editor の責務
 
-VS Code UI と並行して、HTML では変更全体を俯瞰する。
+## Webview
 
-HTML にはコード詳細を大量に表示しない。
+表示する:
 
-表示内容は以下に限定する。
+- Change title
+- summary
+- implementation points
+- available flows
 
-```text
-Change Title
+表示しない:
 
-Implementation Overview
-
-Summary
-...
-
-Implementation
-- ...
-- ...
-- ...
-
-Flows
-- Replay execution
-- Trace persistence
-- Error propagation
-
-Changed Files
-9 files
-```
-
-必要に応じて、
-
-```text
-Open in VS Code
-```
-
-を用意する。
-
-HTML の責務は、
-
-> 何を理解する必要があるかを把握する
-
-こと。
-
-VS Code の責務は、
-
-> それをどのコードでどう実現しているか理解する
-
-こと。
+- 大量の source code
+- diff
+- line-level explanations
 
 ---
 
-# 13. HTML → VS Code Integration
+## TreeView
 
-MVP では一方向だけでよい。
+表示する:
 
-HTML 側から例えば、
-
-```text
-Open Replay execution in VS Code
-```
-
-を押すと対象 Flow を開く。
-
-URI Handler を使う場合は例えば、
-
-```text
-vscode://<extension-id>/review?flow=replay-execution
-```
-
-のような形を検討する。
-
-双方向同期は後回しにする。
+- Flow
+- Step
+- current location
+- SourceLocation
 
 ---
 
-# 14. Phase 8: AI Schema Generation
+## Diff Editor
 
-UI が有効であることを確認してから AI 生成を導入する。
+表示する:
 
-AI への入力候補:
+- 実際の変更
+- current location highlight
+- Source Explanation
+
+---
+
+# 22. Standalone HTML
+
+MVP では standalone HTML を正本にしない。
+
+Webview を正本とする。
+
+将来的に必要になった場合、
+
+```text
+review.json
+      │
+      ├─ Overview Webview
+      │
+      └─ Standalone HTML export
+```
+
+という構成にする。
+
+Standalone HTML は、
+
+- CI artifact
+- 保存
+- 共有
+- 印刷
+
+用途の export format として扱う。
+
+---
+
+# 23. MVP 実装 Phase
+
+## Phase 1
+
+### やること
+
+- Schema 定義
+- validation
+- 手書き `review.json`
+- 実際の変更1件を fixture にする
+
+### やらないこと
+
+- AI 自動生成
+- GitHub integration
+- Evidence
+
+---
+
+# 24. Phase 2 — Extension Skeleton
+
+### やること
+
+VS Code Extension を作成し、
+
+- command
+- custom View
+- Webview Panel
+
+を登録する。
+
+最低限、
+
+```text
+AI Change Review: Open Review
+```
+
+command で fixture を開けるようにする。
+
+---
+
+# 25. Phase 3 — Overview Webview
+
+### やること
+
+`review.json` から Overview Webview を生成する。
+
+表示:
+
+- title
+- summary
+- implementation
+- flows
+
+Flow の `Open` ボタンを実装する。
+
+---
+
+# 26. Phase 4 — Flow TreeView
+
+### やること
+
+- Flow 一覧表示
+- Step 一覧表示
+- Flow 切り替え
+- current Step 表示
+
+まだ Git Diff とは接続しなくてよい。
+
+---
+
+# 27. Phase 5 — Source Navigation
+
+### やること
+
+Flow Step から通常 Source Editor の SourceLocation にジャンプする。
+
+まず、
+
+```text
+TreeView
+↓
+showTextDocument
+↓
+revealRange
+```
+
+だけを完成させる。
+
+---
+
+# 28. Phase 6 — Git Diff
+
+### やること
+
+baseRevision / targetRevision から対象ファイルの内容を取得する。
+
+標準 Diff Editor を開く。
+
+Flow Step クリックで該当 Diff へ移動する。
+
+---
+
+# 29. Phase 7 — Highlight
+
+### やること
+
+current SourceLocation を Decoration で強調する。
+
+Flow 上の current Step と Editor の表示を同期する。
+
+---
+
+# 30. Phase 8 — Explanation
+
+### やること
+
+`explanations` を読み、
+
+SourceLocation に対応する説明を表示する。
+
+最初は最も単純な UI を採用する。
+
+---
+
+# 31. Phase 9 — Full Source
+
+### やること
+
+Diff から Full Source を開く command を追加する。
+
+同じ SourceLocation を highlight する。
+
+---
+
+# 32. Phase 10 — Webview → Flow Integration
+
+### やること
+
+Overview Webview の Flow `Open` ボタンから、
+
+- Flow 選択
+- current Step 選択
+- Diff open
+
+まで一連で行う。
+
+ここまでで MVP UX を完成とする。
+
+---
+
+# 33. Phase 11 — AI Schema Generation
+
+UI の有効性確認後にのみ実装する。
+
+AI 入力候補:
 
 ```text
 Change request
+
 base source
+
 target source
+
 git diff
+
 repository context
 ```
 
-AI には以下を生成させる。
-
-1. Implementation Overview
-2. 実装理解に有効な Flow
-3. 各 Flow の Step
-4. Flow Step と Source Location の対応
-5. 各 Source Location の Explanation
-
-生成ルール:
+生成対象:
 
 ```text
-- Git hunk 単位で説明を分割しない
-- 意味のある実装単位で Source Location を選ぶ
+overview
+flows
+steps
+locations
+explanations
+```
+
+---
+
+# 34. AI Generation Rule
+
+AI には以下を要求する。
+
+```text
+- Git hunk 単位で説明を作らない
+- 人間が実装を理解する単位で SourceLocation を選ぶ
 - コードを逐語訳しない
-- 実装全体における役割を最優先する
-- 前後の処理との接続関係を意識する
-- コードから自明でない設計理由を書く
-- 重要な条件・副作用・失敗ケースのみ Watch とする
+- 実装全体での役割を書く
+- 前後の処理との関係を意識する
+- 設計理由を書く
+- 重要な failure / condition のみ Watch にする
+- Flow は「コードを理解する順序」で構成する
+- ファイル順をそのまま Flow にしない
 ```
-
-AI が生成した schema は JSON Schema 等で validation する。
 
 ---
 
-# 15. MVP 完成条件
+# 35. MVP 完成条件
 
-以下がすべてできれば MVP 完成とする。
+以下をすべて満たせば MVP 完成とする。
 
-- 変更1件を `review.json` として読み込める
-- HTML で Implementation Overview を確認できる
-- VS Code 左ペインに複数 Flow を表示できる
+- `review.json` を読み込める
+- Overview Webview が表示される
+- Webview から Flow を選べる
+- TreeView に複数 Flow が表示される
 - Flow を切り替えられる
-- Flow Step を選択すると対象 source / diff へ移動する
-- 現在位置が Flow 上で分かる
-- 対象コード範囲がエディタ上で分かる
-- 対象コードに Implementation Explanation が表示される
-- 必要に応じて Full Source を開ける
+- Flow Step が表示される
+- current Step が分かる
+- Flow Step から SourceLocation に移動できる
+- Git Diff Editor を開ける
+- 対象 SourceLocation が highlight される
+- Source Explanation を確認できる
+- Full Source を開ける
 
 ---
 
-# 16. MVP では実装しないもの
+# 36. MVP では実装しないもの
 
-以下は後回しにする。
+以下は対象外。
 
-- Evidence
-- リスク判定
-- AI による正誤レビュー
-- GitHub PR 連携
-- GitHub API 連携
-- 複数人レビュー
-- コメント編集
-- runtime tracing
-- symbol graph の高度な解析
-- data-flow / control-flow の静的解析
-- working tree へのリアルタイム追従
-- branch を含む高度な Flow graph
-- Flow 自動レイアウト
-- commit ごとの履歴 UI
 - Change Unit
-- 自動修正
-- レビュー承認機能
+- Evidence
+- risk score
+- correctness review
+- AI automated fixing
+- GitHub PR integration
+- GitHub API integration
+- reviewer approval
+- comment editing
+- multi-user review
+- runtime tracing
+- control-flow static analysis
+- data-flow static analysis
+- symbol dependency graph
+- live working-tree sync
+- sophisticated graph visualization
+- branch visualization
+- CI integration
+- standalone HTML export
+- commit history UI
 
 ---
 
-# 17. 推奨実装順序
-
-以下の順で進める。
-
-```text
-Phase 1
-Schema 定義
-+
-手書き review.json fixture
-
-        ↓
-
-Phase 2
-VS Code Extension の骨格
-
-        ↓
-
-Phase 3
-Flow Tree View
-
-        ↓
-
-Phase 4
-Flow Step → Full Source Navigation
-
-        ↓
-
-Phase 5
-Git Diff Integration
-
-        ↓
-
-Phase 6
-Source Location Highlight
-
-        ↓
-
-Phase 7
-Explanation 表示
-
-        ↓
-
-Phase 8
-HTML Implementation Overview
-
-        ↓
-
-Phase 9
-HTML → VS Code 連携
-
-        ↓
-
-Phase 10
-AI Schema Generation
-```
-
----
-
-# 18. 各 Phase の進め方
-
-各 Phase では、実装前に以下を明示する。
-
-```text
-今回やること
-- ...
-
-今回やらないこと
-- ...
-```
-
-実装後は必ず実際に動作確認する。
-
-一度に複数 Phase を実装せず、各 Phase の UI / UX が成立していることを確認してから次へ進む。
-
-特に以下の順序を守る。
-
-```text
-手動データで UX を確認
-        ↓
-UI を固定
-        ↓
-schema を固定
-        ↓
-最後に AI 生成を自動化
-```
-
-AI 生成精度の改善を、UI 検証より先に行わないこと。
-
----
-
-# 19. MVP で最も確認したいこと
-
-技術的な完成度より、以下を検証する。
+# 37. MVP の検証項目
 
 ## 仮説1
 
-Flow 順にコードを読むことで、通常の Git diff より実装全体の理解が速いか。
+Implementation Overview を最初に読むことで、Diff を読み始める前に実装の mental model を形成できるか。
 
 ## 仮説2
 
-コード横の Explanation によって、
+ファイル順ではなく Flow 順に Diff を読むことで、実装理解が速くなるか。
+
+## 仮説3
+
+Source Explanation によって、
 
 ```text
-このコードは何のために存在するのか
+なぜこのコードが必要なのか
 ```
 
 を推測する時間が減るか。
 
-## 仮説3
+## 仮説4
 
-Diff を中心にしながら必要時だけ Full Source を確認することで、
+Diff を主画面にして、必要な場合だけ Full Source に移動することで、
 
 ```text
-diff の文脈不足
+Diff の文脈不足
 ```
 
 と
 
 ```text
-source 全体を読むコスト
+Source 全体を読むコスト
 ```
 
 の両方を抑えられるか。
 
-## 仮説4
+## 仮説5
 
-Implementation Overview → Flow → Source という粒度移動が自然か。
+Webview → Flow Tree → Diff Editor という粒度移動が自然か。
 
-MVP の設計判断は、これらの仮説検証を最優先すること。
+---
+
+# 38. 実装時の進め方
+
+各 Phase の開始時に必ず、
+
+```text
+今回やること
+
+今回やらないこと
+```
+
+を明示する。
+
+各 Phase の完了時に実際の UI を動かして確認する。
+
+一度に複数 Phase を進めすぎない。
+
+優先順位は以下。
+
+```text
+手動 fixture
+
+↓
+
+UX 検証
+
+↓
+
+UI 固定
+
+↓
+
+Schema 固定
+
+↓
+
+AI 自動生成
+```
+
+AI 生成の精度改善を UI 検証より先に行わない。
+
+---
+
+# 39. 推奨ディレクトリ構成
+
+例:
+
+```text
+src/
+├─ extension.ts
+│
+├─ review/
+│  ├─ schema.ts
+│  ├─ loader.ts
+│  ├─ validation.ts
+│  └─ state.ts
+│
+├─ overview/
+│  ├─ overviewPanel.ts
+│  └─ renderOverview.ts
+│
+├─ flow/
+│  ├─ flowTreeProvider.ts
+│  └─ flowNavigation.ts
+│
+├─ source/
+│  ├─ diffProvider.ts
+│  ├─ sourceNavigation.ts
+│  ├─ decoration.ts
+│  └─ explanation.ts
+│
+└─ fixtures/
+   └─ review.json
+```
+
+MVP の段階では過度に抽象化しない。
+
+---
+
+# 40. 最終的な MVP の利用フロー
+
+ユーザーが、
+
+```text
+AI Change Review: Open Review
+```
+
+を実行する。
+
+↓
+
+Overview Webview が開く。
+
+```text
+Implementation Overview
+
+保存済み入力履歴を再生する user-replay mode を追加。
+
+Implementation
+✓ VSCode → Python へ execution mode を伝播
+✓ trace を InputInterface へ復元
+✓ 既存 Debugger 経路を再利用
+```
+
+↓
+
+`Replay execution` を選ぶ。
+
+↓
+
+左 Sidebar に Flow が表示される。
+
+```text
+✓ Replay 選択
+→ execution mode 送信
+○ trace 読込
+○ debugger setup
+```
+
+↓
+
+Flow Step を押す。
+
+↓
+
+Git Diff が対象コード位置を開く。
+
+↓
+
+該当範囲に Explanation が表示される。
+
+```text
+保存済み trace を入力源へ復元
+
+Role
+保存履歴を InputInterface として
+Debugger へ渡せる状態にする。
+
+Why
+既存入力経路を再利用するため。
+```
+
+↓
+
+必要な場合だけ Full Source を開く。
+
+これを MVP の完成形とする。
