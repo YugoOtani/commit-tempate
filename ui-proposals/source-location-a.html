@@ -4,158 +4,118 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>案A ファイルタブ — AI Change Review</title>
+  <title>案A ファイルタブ — EmfrpDebugger Change Review</title>
   <style>
-    :root { color-scheme:light; --ink:#172033; --muted:#657086; --line:#dce1e9; --paper:#fff; --bg:#f5f6f8; --navy:#121c31; --blue:#1769e0; --blue-soft:#eaf2ff; --orange:#b44b16; --orange-soft:#fff0e8; --violet:#7157c8; --violet-soft:#f1edff; --add:#eaf8f0; --del:#fff0f1; --code:#fbfcfe; }
+    :root { color-scheme:light; --ink:#172033; --muted:#687388; --line:#dde2ea; --paper:#fff; --bg:#f4f6f9; --navy:#111b31; --add:#e9f8f0; --del:#fff0f1; --cu1:#1769c9; --cu1-bg:#eaf3ff; --cu2:#b35518; --cu2-bg:#fff0e7; --cu3:#7151b5; --cu3-bg:#f1edff; --cu4:#1f7a55; --cu4-bg:#e9f8f0; }
     * { box-sizing:border-box; }
-    html { scroll-behavior:smooth; }
     body { margin:0; color:var(--ink); background:var(--bg); font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.5; }
     a { color:inherit; }
-    a:focus-visible, label:focus-within { outline:3px solid #ffb000; outline-offset:3px; }
+    a:focus-visible,label:focus-within,summary:focus-visible { outline:3px solid #ffb000; outline-offset:3px; }
     .topbar { color:#fff; background:var(--navy); }
-    .topbar-inner { width:min(1320px,calc(100% - 36px)); margin:auto; display:flex; align-items:center; justify-content:space-between; gap:24px; min-height:58px; }
-    .brand { font-weight:850; letter-spacing:-.02em; }
-    .proposal-nav { display:flex; align-items:center; gap:6px; }
-    .proposal-nav a { padding:7px 10px; border-radius:7px; color:#cad5e7; font-size:.76rem; font-weight:750; text-decoration:none; }
-    .proposal-nav a[aria-current="page"] { color:#14213a; background:#fff; }
-    .hero { color:#fff; background:linear-gradient(125deg,#16223a 0%,#22395f 68%,#174f87 100%); }
-    .hero-inner, main { width:min(1320px,calc(100% - 36px)); margin:auto; }
-    .hero-inner { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,.7fr); gap:48px; align-items:end; padding:42px 0 46px; }
-    .kicker { margin:0 0 9px; color:#9fc8ff; font-size:.71rem; font-weight:850; letter-spacing:.13em; text-transform:uppercase; }
-    h1 { margin:0; font-size:clamp(2rem,4vw,3.35rem); line-height:1.05; letter-spacing:-.045em; }
-    .hero p { margin:12px 0 0; color:#d8e2f2; }
-    .hero-note { padding:17px 19px; border:1px solid rgba(255,255,255,.2); border-radius:12px; background:rgba(255,255,255,.08); }
-    .hero-note strong { display:block; margin-bottom:5px; font-size:.8rem; }
-    .hero-note span { color:#d8e2f2; font-size:.84rem; }
-    main { padding:28px 0 72px; }
-    .context { display:flex; justify-content:space-between; gap:24px; align-items:center; padding:18px 20px; border:1px solid var(--line); border-radius:12px; background:#fff; }
-    .context strong { display:block; }
-    .context p { margin:4px 0 0; color:var(--muted); font-size:.84rem; }
-    .legend { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
-    .chip { display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border:1px solid currentColor; border-radius:99px; font-size:.68rem; font-weight:850; white-space:nowrap; }
-    .chip::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor; }
-    .cu1 { color:#125bc0; background:var(--blue-soft); }
-    .cu2 { color:#9d3f12; background:var(--orange-soft); }
-    .cu3 { color:#5d45aa; background:var(--violet-soft); }
-    .file-tabs { margin-top:20px; }
+    .topbar-inner,.hero-inner,main { width:min(1360px,calc(100% - 36px)); margin:auto; }
+    .topbar-inner { min-height:58px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
+    .brand { font-weight:850; }
+    .nav { display:flex; gap:5px; }
+    .nav a { padding:7px 10px; color:#cbd5e7; border-radius:7px; font-size:.75rem; font-weight:800; text-decoration:none; }
+    .nav a[aria-current="page"] { color:var(--ink); background:#fff; }
+    .hero { color:#fff; background:linear-gradient(125deg,#14213b,#244d78); }
+    .hero-inner { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:35px; align-items:end; padding:36px 0 40px; }
+    .kicker { margin:0 0 7px; color:#a9d0ff; font-size:.7rem; font-weight:900; letter-spacing:.13em; text-transform:uppercase; }
+    h1 { max-width:920px; margin:0; font-size:clamp(1.85rem,3.8vw,3.15rem); line-height:1.08; letter-spacing:-.045em; }
+    .commit { display:grid; grid-template-columns:repeat(3,auto); gap:24px; }
+    .commit b,.commit span { display:block; }
+    .commit b { font-size:1.18rem; }
+    .commit span { color:#c9d7e9; font-size:.67rem; }
+    main { padding:24px 0 70px; }
+    .summary { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:20px; align-items:center; padding:17px 19px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+    .summary strong { display:block; }
+    .summary p { margin:3px 0 0; color:var(--muted); font-size:.8rem; }
+    .chain { display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+    .unit-pill { display:inline-flex; align-items:center; gap:5px; padding:5px 8px; border:1px solid currentColor; border-radius:99px; font-size:.65rem; font-weight:900; white-space:nowrap; }
+    .chain i { color:#98a2b2; font-style:normal; }
+    .cu1 { color:var(--cu1); background:var(--cu1-bg); }
+    .cu2 { color:var(--cu2); background:var(--cu2-bg); }
+    .cu3 { color:var(--cu3); background:var(--cu3-bg); }
+    .cu4 { color:var(--cu4); background:var(--cu4-bg); }
+    .browser { margin-top:18px; }
     .radio { position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); }
-    .tablist { display:flex; gap:4px; overflow:auto; padding:0 12px; border-bottom:1px solid var(--line); }
-    .tab { flex:none; position:relative; padding:14px 16px 13px; color:var(--muted); border-radius:9px 9px 0 0; font:750 .78rem/1.3 ui-monospace,SFMono-Regular,Consolas,monospace; cursor:pointer; }
-    .tab small { margin-left:8px; padding:2px 6px; color:#657086; border-radius:99px; background:#e9edf3; font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-    #tab-core:checked ~ .tablist label[for="tab-core"], #tab-tests:checked ~ .tablist label[for="tab-tests"] { color:var(--blue); background:#fff; }
-    #tab-core:checked ~ .tablist label[for="tab-core"]::after, #tab-tests:checked ~ .tablist label[for="tab-tests"]::after { content:""; position:absolute; right:12px; bottom:-1px; left:12px; height:3px; background:var(--blue); }
-    .panel { display:none; padding:20px; border:1px solid var(--line); border-top:0; border-radius:0 0 14px 14px; background:#fff; box-shadow:0 12px 28px rgba(22,35,60,.06); }
-    #tab-core:checked ~ .panels .panel-core, #tab-tests:checked ~ .panels .panel-tests { display:block; }
-    .panel-head { display:flex; justify-content:space-between; gap:20px; align-items:end; margin-bottom:14px; }
-    .panel-head h2 { margin:0; font-size:1.02rem; }
-    .panel-head p { margin:4px 0 0; color:var(--muted); font-size:.78rem; }
-    .coverage { color:#176648; font-size:.75rem; font-weight:800; }
-    .location-list { display:grid; gap:18px; }
-    .location { overflow:hidden; border:1px solid var(--line); border-radius:12px; background:var(--paper); }
-    .location-head { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:12px 15px; border-bottom:1px solid var(--line); background:#f8fafc; }
-    .location-head strong { font-size:.88rem; }
-    .location-head span { color:var(--muted); font: .72rem/1.4 ui-monospace,SFMono-Regular,Consolas,monospace; }
-    .diff-scroll { overflow:auto; background:var(--code); }
-    .hunk { min-width:790px; padding:9px 0 12px; color:#2d384d; font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace; }
-    .hunk-title { padding:3px 14px 7px; color:#62708a; }
-    .line { display:grid; grid-template-columns:46px 46px 22px minmax(max-content,1fr) auto; min-height:22px; }
-    .line > span { padding:1px 8px; }
-    .ln { color:#8a95a7; text-align:right; border-right:1px solid #e5e9ef; user-select:none; }
-    .sign { text-align:center; user-select:none; }
-    .code { white-space:pre; }
-    .line.add { background:var(--add); }
-    .line.del { background:var(--del); }
-    .pins { position:sticky; right:0; display:flex; align-self:center; gap:4px; padding-right:8px !important; }
-    .pin { min-width:23px; padding:1px 5px; border:1px solid currentColor; border-radius:4px; font:850 9px/1.4 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; text-align:center; }
-    .captions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding:12px; border-top:1px solid var(--line); background:#f7f8fb; }
-    .caption { position:relative; min-width:0; padding:13px 14px 13px 18px; border:1px solid var(--line); border-radius:9px; background:#fff; }
-    .caption::before { content:""; position:absolute; top:0; bottom:0; left:0; width:4px; border-radius:9px 0 0 9px; background:currentColor; }
-    .caption-top { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; align-items:center; }
-    .caption-id { font-size:.69rem; font-weight:900; letter-spacing:.04em; }
-    .caption-type { color:var(--muted); font-size:.66rem; font-weight:750; }
-    .caption h3 { margin:8px 0 4px; color:var(--ink); font-size:.92rem; }
-    .caption p { margin:0; color:#526078; font-size:.79rem; }
-    .focus { margin-top:9px; padding-top:8px; color:#5f4824; border-top:1px dashed #dfc38b; font-size:.74rem; }
-    .focus strong { color:#8a5400; }
-    .empty { padding:16px; color:var(--muted); border:1px dashed #b9c1ce; border-radius:9px; text-align:center; font-size:.8rem; }
-    .proposal-summary { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:22px; }
-    .proposal-summary div { padding:15px; border:1px solid var(--line); border-radius:10px; background:#fff; }
-    .proposal-summary strong { display:block; font-size:.78rem; }
-    .proposal-summary p { margin:5px 0 0; color:var(--muted); font-size:.76rem; }
-    @media (max-width:850px) { .hero-inner { grid-template-columns:1fr; gap:22px; } .context { align-items:flex-start; flex-direction:column; } .legend { justify-content:flex-start; } .captions,.proposal-summary { grid-template-columns:1fr; } }
-    @media (max-width:620px) { .proposal-nav a:not([aria-current="page"]) { display:none; } .topbar-inner,.hero-inner,main { width:min(100% - 24px,1320px); } .panel { padding:12px; } .panel-head { display:block; } .coverage { display:block; margin-top:8px; } }
-    @media print { body { background:#fff; font-size:10pt; } .topbar,.tablist { display:none; } .hero { color:#111; background:#fff; border-bottom:2px solid #111; } .hero p,.hero-note span { color:#333; } .hero-note { border-color:#bbb; background:#fff; } .panel { display:block !important; padding:0; border:0; box-shadow:none; } .panel + .panel { margin-top:24px; } .location { break-inside:avoid; } }
+    .tabs { display:flex; gap:4px; overflow:auto; padding:0 8px; border-bottom:1px solid var(--line); scrollbar-width:thin; }
+    .tab { flex:0 0 auto; max-width:205px; padding:12px 13px; color:#667287; border-radius:9px 9px 0 0; cursor:pointer; }
+    .tab b,.tab span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .tab b { font:800 .7rem/1.35 ui-monospace,SFMono-Regular,Consolas,monospace; }
+    .tab span { margin-top:3px; font-size:.62rem; }
+    #f1:checked~.tabs label[for="f1"],#f2:checked~.tabs label[for="f2"],#f3:checked~.tabs label[for="f3"],#f4:checked~.tabs label[for="f4"],#f5:checked~.tabs label[for="f5"],#f6:checked~.tabs label[for="f6"],#f7:checked~.tabs label[for="f7"],#f8:checked~.tabs label[for="f8"],#f9:checked~.tabs label[for="f9"] { color:#155fb9; background:#fff; box-shadow:inset 0 -3px #1769c9; }
+    .panel { display:none; padding:18px; border:1px solid var(--line); border-top:0; border-radius:0 0 13px 13px; background:#fff; box-shadow:0 12px 28px rgba(23,32,51,.055); }
+    #f1:checked~.panels .p1,#f2:checked~.panels .p2,#f3:checked~.panels .p3,#f4:checked~.panels .p4,#f5:checked~.panels .p5,#f6:checked~.panels .p6,#f7:checked~.panels .p7,#f8:checked~.panels .p8,#f9:checked~.panels .p9 { display:block; }
+    .panel-head { display:flex; justify-content:space-between; gap:20px; align-items:flex-start; margin-bottom:13px; }
+    .panel-head h2 { margin:0; font:850 .9rem/1.45 ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere; }
+    .panel-head p { margin:4px 0 0; color:var(--muted); font-size:.75rem; }
+    .panel-stats { flex:none; color:#556174; font-size:.7rem; font-weight:800; }
+    .locations { display:grid; gap:13px; }
+    .location { overflow:hidden; border:1px solid var(--line); border-radius:10px; }
+    .location-head { display:flex; justify-content:space-between; gap:15px; padding:10px 13px; background:#f7f9fb; border-bottom:1px solid var(--line); }
+    .location-head strong { font-size:.8rem; }
+    .location-head span { color:var(--muted); font: .68rem/1.4 ui-monospace,SFMono-Regular,Consolas,monospace; }
+    .code-wrap { overflow:auto; background:#fbfcfd; }
+    pre { min-width:760px; margin:0; padding:10px 13px; color:#30394a; font:12px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre; }
+    .add { display:block; margin:0 -13px; padding:0 13px; background:var(--add); }
+    .del { display:block; margin:0 -13px; padding:0 13px; background:var(--del); }
+    .fold { display:block; margin:4px -13px; padding:4px 13px; color:#6f7b8e; border-block:1px dashed #d9dfe7; background:#f2f5f8; font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:.7rem; }
+    .caption { display:grid; grid-template-columns:180px minmax(0,1fr) auto; gap:15px; align-items:start; padding:12px 14px; border-top:1px solid var(--line); background:#fff; }
+    .caption-unit { font-size:.68rem; font-weight:900; }
+    .caption h3 { margin:0 0 3px; color:var(--ink); font-size:.84rem; }
+    .caption p { margin:0; color:#596579; font-size:.75rem; }
+    .risk { color:#7d5812; font-size:.65rem; font-weight:850; white-space:nowrap; }
+    .note { margin-top:18px; color:#707b8d; font-size:.72rem; }
+    @media (max-width:850px) { .hero-inner,.summary { grid-template-columns:1fr; } .chain { justify-content:flex-start; } .caption { grid-template-columns:1fr; gap:5px; } .commit { justify-content:start; } }
+    @media (max-width:620px) { .topbar-inner,.hero-inner,main { width:min(100% - 24px,1360px); } .nav a:not([aria-current="page"]) { display:none; } .commit { gap:16px; } .panel { padding:11px; } .panel-head { display:block; } .panel-stats { display:block; margin-top:7px; } }
+    @media print { body { background:#fff; font-size:10pt; } .topbar,.tabs { display:none; } .hero { color:#111; background:#fff; border-bottom:2px solid #111; } .commit span { color:#444; } .panel { display:block!important; padding:0; border:0; box-shadow:none; } .panel+.panel { margin-top:24px; } .location { break-inside:avoid; } }
   </style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <div class="brand">AI Change Review · UI Lab</div>
-      <nav class="proposal-nav" aria-label="UI案の切り替え"><a href="index.html">現行案</a><a href="source-location-a.html" aria-current="page">案A</a><a href="source-location-b.html">案B</a><a href="source-location-c.html">案C</a></nav>
-    </div>
-  </header>
-
-  <div class="hero">
-    <div class="hero-inner">
-      <div><p class="kicker">Pattern A · File tabs</p><h1>ファイルを選び、<br>変更箇所ごとに読む</h1><p>diffを主役にし、Change Unitの説明を各hunk直下のキャプションとして束ねます。</p></div>
-      <aside class="hero-note"><strong>向いているレビュー</strong><span>ファイル構成を手がかりに読むことが多い、小〜中規模の変更。コード幅を確保しつつ説明との距離を短くできます。</span></aside>
-    </div>
-  </div>
-
+  <header class="topbar"><div class="topbar-inner"><div class="brand">AI Change Review · UI Lab</div><nav class="nav" aria-label="UI案"><a href="index.html">現行案</a><a href="source-location-a.html" aria-current="page">案A</a><a href="source-location-b.html">案B</a><a href="source-location-c.html">案C</a></nav></div></header>
+  <div class="hero"><div class="hero-inner"><div><p class="kicker">Pattern A · 9 file tabs / real fixture</p><h1>最後に与えた時変値を<br>自動で記録する機能を実装</h1></div><div class="commit"><div><b>9</b><span>files</span></div><div><b>+129</b><span>additions</span></div><div><b>−22</b><span>deletions</span></div></div></div></div>
   <main>
-    <section class="context" aria-label="レポート概要とChange Unit凡例">
-      <div><strong>復習対象判定ロジックを追加</strong><p>2 files · 3 change locations · +31 / −2 lines</p></div>
-      <div class="legend" aria-label="Change Unitの色分け"><span class="chip cu1">CU-001 時刻依存</span><span class="chip cu2">CU-002 期限境界</span><span class="chip cu3">CU-003 テスト</span></div>
-    </section>
+    <section class="summary"><div><strong>YugoOtani/EmfrpDebugger · 3ab8547</strong><p>ファイルを選ぶと、そのファイル内の変更hunkと所属Change Unitの説明をまとめて確認できます。</p></div><div class="chain" aria-label="Change Unitの依存順"><span class="unit-pill cu1">CU-1 保存・再生</span><i>→</i><span class="unit-pill cu2">CU-2 lifecycle</span><i>→</i><span class="unit-pill cu3">CU-3 Python protocol</span><i>→</i><span class="unit-pill cu4">CU-4 VSCode UI</span></div></section>
 
-    <section class="file-tabs" aria-label="ファイル別の変更箇所">
-      <input class="radio" type="radio" name="file-tab" id="tab-core" checked>
-      <input class="radio" type="radio" name="file-tab" id="tab-tests">
-      <div class="tablist" role="tablist" aria-label="変更ファイル">
-        <label class="tab" for="tab-core">src/review.rs <small>2箇所</small></label>
-        <label class="tab" for="tab-tests">tests/review.rs <small>1箇所</small></label>
+    <section class="browser" aria-label="変更ファイルのタブ表示">
+      <input class="radio" type="radio" name="file" id="f1" checked><input class="radio" type="radio" name="file" id="f2"><input class="radio" type="radio" name="file" id="f3"><input class="radio" type="radio" name="file" id="f4"><input class="radio" type="radio" name="file" id="f5"><input class="radio" type="radio" name="file" id="f6"><input class="radio" type="radio" name="file" id="f7"><input class="radio" type="radio" name="file" id="f8"><input class="radio" type="radio" name="file" id="f9">
+      <div class="tabs" role="tablist" aria-label="9変更ファイル">
+        <label class="tab" for="f1"><b>input_trace_manager.py</b><span>CU-1 · 2 hunks</span></label><label class="tab" for="f2"><b>debugger.py</b><span>CU-2 · 3 hunks</span></label><label class="tab" for="f3"><b>request.py</b><span>CU-3 · 1 hunk</span></label><label class="tab" for="f4"><b>vscode_debug_session.py</b><span>CU-3 · 3 hunks</span></label><label class="tab" for="f5"><b>package.json</b><span>CU-4 · 2 hunks</span></label><label class="tab" for="f6"><b>emdbAdapter.ts</b><span>CU-4 · 2 hunks</span></label><label class="tab" for="f7"><b>emdbConfigurationProvider.ts</b><span>CU-4 · 1 hunk</span></label><label class="tab" for="f8"><b>engine.ts</b><span>CU-4 · 2 hunks</span></label><label class="tab" for="f9"><b>engineProtocol.ts</b><span>CU-4 · 1 hunk</span></label>
       </div>
 
       <div class="panels">
-        <div class="panel panel-core">
-          <header class="panel-head"><div><h2>crates/learning-core/src/review.rs</h2><p>ReviewScheduleの公開APIと期限判定</p></div><span class="coverage">変更行 5 / 5 説明済み</span></header>
-          <div class="location-list">
-            <article class="location">
-              <header class="location-head"><strong>変更箇所 01 · 基準日を入力に追加</strong><span>L39 → L42</span></header>
-              <div class="diff-scroll"><div class="hunk"><div class="hunk-title">@@ -38,5 +38,8 @@ impl ReviewSchedule {</div><div class="line"><span class="ln">38</span><span class="ln">38</span><span class="sign"> </span><span class="code">impl ReviewSchedule {</span><span></span></div><div class="line del"><span class="ln">39</span><span class="ln"></span><span class="sign">−</span><span class="code">    pub fn is_due(&amp;self) -&gt; bool {</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">42</span><span class="sign">+</span><span class="code">    pub fn is_due(&amp;self, today: LocalDate) -&gt; bool {</span><span class="pins"><span class="pin cu1">01</span></span></div><div class="line"><span class="ln">41</span><span class="ln">44</span><span class="sign"> </span><span class="code">    }</span><span></span></div></div></div>
-              <div class="captions">
-                <aside class="caption cu1"><div class="caption-top"><span class="caption-id">CU-001 · AIによる説明</span><span class="caption-type">API設計</span></div><h3>時間への暗黙依存を除去</h3><p>現在日をdomain内部で取得せず、呼び出し側の責務として明示します。同じ入力から同じ結果を得られます。</p><div class="focus"><strong>確認:</strong> LocalDateがユーザーのtimezoneで生成されること。</div></aside>
-              </div>
-            </article>
+        <section class="panel p1"><header class="panel-head"><div><h2>python/emfrp_debugger/emfrp_bridge/services/input_trace_manager.py</h2><p>保存済みtraceの読み込みと、実行中traceの永続化</p></div><span class="panel-stats">2 hunks · +70 / −1 · MEDIUM</span></header><div class="locations">
+          <article class="location"><div class="location-head"><strong>01 · SavedInputTraceIterを追加</strong><span>@@ -1,13 +1,67 @@</span></div><div class="code-wrap"><pre><span class="add">+import os</span><span class="add">+DST_TRACE_FILE = "trace.txt"</span><span class="add">+class SavedInputTraceIter(InputInterface):</span><span class="add">+    def next(self) -&gt; Optional[List[InputNode]]:</span><span class="add">+        if self._pos &gt;= len(self._buf):</span><span class="add">+            return None</span><span class="fold">… load_saved_trace() 内のファイル存在・program ID・レコード形式検証を折りたたみ</span><span class="add">+                    record.append(InputNode(node_name=node_name, value=value))</span><span class="add">+            return Success(None)</span><span class="add">+        except Exception as e:</span><span class="add">+            return Failure(f"Failed to open trace file '{DST_TRACE_FILE}': {e}")</span></pre></div><div class="caption cu1"><div class="caption-unit">CU-1 · 入力履歴の保存・再生</div><div><h3>trace.txtをInputInterfaceとして再生する</h3><p>先頭行のprogram IDを照合し、後続のnode=valueをInputNodeへ復元します。不在、空、別program、壊れたレコードはFailureになります。</p></div><span class="risk">MEDIUM</span></div></article>
+          <article class="location"><div class="location-head"><strong>02 · バッファをtrace.txtへ保存</strong><span>@@ -26,6 +80,21 @@</span></div><div class="code-wrap"><pre><span class="add">+    def save_trace(self, prog_uniq_id: str) -&gt; None:</span><span class="add">+        try:</span><span class="add">+            with open(DST_TRACE_FILE, "w") as f:</span><span class="add">+                f.write(f"{prog_uniq_id}\n")</span><span class="add">+                for rec in self._buf:</span><span class="add">+                    line_parts.append(f"{node_name}={value}")</span><span class="add">+                    f.write(f"{','.join(line_parts)}\n")</span><span class="add">+        except Exception as e:</span><span class="add">+            print(f"InputTraceManager: Failed to save trace to '{DST_TRACE_FILE}': {e}")</span></pre></div><div class="caption cu1"><div class="caption-unit">CU-1 · 入力履歴の保存・再生</div><div><h3>program IDと入力履歴を単一ファイルへ直列化</h3><p>現在の入力バッファをnode=value形式で保存し、次回セッションの再生元にします。書き込み失敗は例外を伝播せず標準出力へ記録します。</p></div><span class="risk">MEDIUM</span></div></article>
+        </div></section>
 
-            <article class="location">
-              <header class="location-head"><strong>変更箇所 02 · 今日を含む期限判定</strong><span>L42–44</span></header>
-              <div class="diff-scroll"><div class="hunk"><div class="hunk-title">@@ -42,3 +42,4 @@ pub fn is_due</div><div class="line"><span class="ln"></span><span class="ln">42</span><span class="sign"> </span><span class="code">    pub fn is_due(&amp;self, today: LocalDate) -&gt; bool {</span><span class="pins"><span class="pin cu1">01</span></span></div><div class="line add"><span class="ln"></span><span class="ln">43</span><span class="sign">+</span><span class="code">        self.due_date &lt;= today</span><span class="pins"><span class="pin cu2">02</span></span></div><div class="line"><span class="ln"></span><span class="ln">44</span><span class="sign"> </span><span class="code">    }</span><span></span></div></div></div>
-              <div class="captions">
-                <aside class="caption cu1"><div class="caption-top"><span class="caption-id">CU-001 · 関連説明</span><span class="caption-type">入力境界</span></div><h3>判定基準は引数のtoday</h3><p>この行は外部入力された基準日を実際の判定へ接続します。</p></aside>
-                <aside class="caption cu2"><div class="caption-top"><span class="caption-id">CU-002 · AIによる説明</span><span class="caption-type">ビジネスルール</span></div><h3><code>&lt;=</code> で包含境界を明示</h3><p>期限が今日と同じ場合も対象に含め、未来日のみを除外します。</p><div class="focus"><strong>確認:</strong> 仕様の「今日以前」が包含境界であること。</div></aside>
-              </div>
-            </article>
-          </div>
-        </div>
+        <section class="panel p2"><header class="panel-head"><div><h2>python/emfrp_debugger/emfrp_bridge/core/debugger.py</h2><p>保存・復元機能をDebuggerのライフサイクルへ接続</p></div><span class="panel-stats">3 hunks · +18 / −1 · MEDIUM</span></header><div class="locations">
+          <article class="location"><div class="location-head"><strong>01 · SavedInputTraceIterを依存へ追加</strong><span>@@ -20,7 +20,7 @@</span></div><div class="code-wrap"><pre><span class="del">-from ...input_trace_manager import InputTraceManager</span><span class="add">+from ...input_trace_manager import InputTraceManager, SavedInputTraceIter</span></pre></div><div class="caption cu2"><div class="caption-unit">CU-2 · Debugger lifecycle</div><div><h3>保存済み入力の再生実装をDebuggerから利用</h3><p>CU-1で追加したiteratorをライフサイクル層へ接続する依存変更です。</p></div><span class="risk">depends on CU-1</span></div></article>
+          <article class="location"><div class="location-head"><strong>02 · abort時に履歴を保存</strong><span>@@ -50,8 +50,10 @@</span></div><div class="code-wrap"><pre><span class="add">+        self._saved_iter = SavedInputTraceIter()</span>     def on_abort(self):<span class="add">+        self.save_input_iter()</span>         if self._input_trace_manager is not None:</pre></div><div class="caption cu2"><div class="caption-unit">CU-2 · Debugger lifecycle</div><div><h3>セッション終了を保存タイミングにする</h3><p>Debugger生成時に再生iteratorを保持し、abort処理の先頭で現在の入力履歴を保存します。</p></div><span class="risk">MEDIUM</span></div></article>
+          <article class="location"><div class="location-head"><strong>03 · load / save / active APIを追加</strong><span>@@ -610,6 +612,21 @@</span></div><div class="code-wrap"><pre><span class="add">+    def load_input_interface(self) -&gt; Result[None, str]:</span><span class="add">+        trace = self._saved_iter.load_saved_trace(str(self._mapping.c_entry_file))</span><span class="add">+        if isinstance(trace, Failure):</span><span class="add">+            return Failure(trace.failure())</span><span class="add">+        return self.register_input_interface(self._saved_iter)</span><span class="add">+    def save_input_iter(self):</span><span class="add">+        if self._input_trace_manager is not None:</span><span class="add">+            self._input_trace_manager.save_trace(str(self._mapping.c_entry_file))</span></pre></div><div class="caption cu2"><div class="caption-unit">CU-2 · Debugger lifecycle</div><div><h3>保存済みtraceを既存の登録経路へ流す</h3><p>読み込み成功後はSavedInputTraceIterを通常のInputInterfaceとして登録し、状態確認もDebugger APIへ集約します。</p></div><span class="risk">MEDIUM</span></div></article>
+        </div></section>
 
-        <div class="panel panel-tests">
-          <header class="panel-head"><div><h2>crates/learning-core/tests/review.rs</h2><p>期限判定の境界値テスト</p></div><span class="coverage">変更行 24 / 24 説明済み</span></header>
-          <div class="location-list">
-            <article class="location">
-              <header class="location-head"><strong>変更箇所 03 · 過去・今日・未来の境界</strong><span>L68–96</span></header>
-              <div class="diff-scroll"><div class="hunk"><div class="hunk-title">@@ -64,4 +68,28 @@ mod tests {</div><div class="line add"><span class="ln"></span><span class="ln">68</span><span class="sign">+</span><span class="code">    #[test]</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">69</span><span class="sign">+</span><span class="code">    fn due_today_is_ready_for_review() {</span><span class="pins"><span class="pin cu3">03</span></span></div><div class="line add"><span class="ln"></span><span class="ln">70</span><span class="sign">+</span><span class="code">        let today = LocalDate::from_ymd(2026, 9, 22);</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">71</span><span class="sign">+</span><span class="code">        assert!(schedule(today).is_due(today));</span><span class="pins"><span class="pin cu2">02</span><span class="pin cu3">03</span></span></div><div class="line add"><span class="ln"></span><span class="ln">72</span><span class="sign">+</span><span class="code">    }</span><span></span></div><div class="line add"><span class="ln"></span><span class="ln">74</span><span class="sign">+</span><span class="code">    // past: true / future: false</span><span class="pins"><span class="pin cu3">03</span></span></div></div></div>
-              <div class="captions">
-                <aside class="caption cu2"><div class="caption-top"><span class="caption-id">CU-002 · 関連説明</span><span class="caption-type">仕様との対応</span></div><h3>今日の期待値を固定</h3><p>実装した包含境界が、同日のケースでtrueになることを確認します。</p></aside>
-                <aside class="caption cu3"><div class="caption-top"><span class="caption-id">CU-003 · AIによる説明</span><span class="caption-type">テスト</span></div><h3>比較演算子の両側を保護</h3><p>過去・今日・未来の3分類をテストし、境界の変更を検知できるようにします。</p></aside>
-              </div>
-            </article>
-          </div>
-        </div>
+        <section class="panel p3"><header class="panel-head"><div><h2>python/emfrp_debugger/vscode_adapter/request.py</h2><p>start requestのPython側型へuser-replayを追加</p></div><span class="panel-stats">1 hunk · +1 / −1 · MEDIUM</span></header><div class="locations"><article class="location"><div class="location-head"><strong>01 · executionModeの許容値を拡張</strong><span>@@ -15,7 +15,7 @@</span></div><div class="code-wrap"><pre><span class="del">-    executionMode: Literal["normal", "user-input"]</span><span class="add">+    executionMode: Literal["normal", "user-input", "user-replay"]</span></pre></div><div class="caption cu3"><div class="caption-unit">CU-3 · Python protocol</div><div><h3>VSCodeからuser-replayを受理する</h3><p>request validationで新しいexecutionModeを拒否しないよう、Literal型を拡張します。</p></div><span class="risk">depends on CU-2</span></div></article></div></section>
+
+        <section class="panel p4"><header class="panel-head"><div><h2>python/emfrp_debugger/vscode_adapter/vscode_debug_session.py</h2><p>user-replay起動、失敗応答、入力状態判定</p></div><span class="panel-stats">3 hunks · +20 / −5 · MEDIUM</span></header><div class="locations">
+          <article class="location"><div class="location-head"><strong>01 · replay起動と失敗応答</strong><span>@@ -51,10 +51,25 @@</span></div><div class="code-wrap"><pre><span class="add">+                    if req.params.executionMode == "user-replay":</span><span class="add">+                        res = self._debugger.load_input_interface()</span><span class="add">+                        if isinstance(res, Failure):</span><span class="add">+                            send_response(ResponseCommandFail(</span><span class="add">+                                params=ResponseParamWithMessage(message="No replay data")</span><span class="add">+                            ))</span><span class="add">+                            continue</span><span class="add">+                    elif req.params.executionMode == "user-input":</span></pre></div><div class="caption cu3"><div class="caption-unit">CU-3 · Python protocol</div><div><h3>保存データがない場合はcommandFailで開始を止める</h3><p>user-replayではDebuggerの復元APIを呼び、Failureをプロトコル上のエラーへ変換します。</p></div><span class="risk">MEDIUM</span></div></article>
+          <article class="location"><div class="location-head"><strong>02 · terminate後にrequest loopを終了</strong><span>@@ -89,6 +104,7 @@</span></div><div class="code-wrap"><pre>                     send_response(resp)<span class="add">+                    break</span></pre></div><div class="caption cu3"><div class="caption-unit">CU-3 · Python protocol</div><div><h3>detach完了後の処理継続を防ぐ</h3><p>terminateへのsuccess応答後、sessionのrequest loopを明示的に終了します。</p></div><span class="risk">MEDIUM</span></div></article>
+          <article class="location"><div class="location-head"><strong>03 · active判定をDebuggerへ委譲</strong><span>@@ -267,8 +283,7 @@</span></div><div class="code-wrap"><pre><span class="del">-                    cur_iter = debugger.input_view_current_iter()</span><span class="del">-                    if self._input_interface is None:</span><span class="add">+                    if not debugger.input_interface_active():</span></pre></div><div class="caption cu3"><div class="caption-unit">CU-3 · Python protocol</div><div><h3>user-inputとuser-replayを同じ状態判定で扱う</h3><p>sessionが持つ入力interfaceではなく、Debugger側の登録状態を参照します。</p></div><span class="risk">MEDIUM</span></div></article>
+        </div></section>
+
+        <section class="panel p5"><header class="panel-head"><div><h2>vscode-extension/emdb/package.json</h2><p>2つのdebug configuration schemaへuser-replayを追加</p></div><span class="panel-stats">2 hunks · +6 / −4 · LOW</span></header><div class="locations"><article class="location"><div class="location-head"><strong>01 · 1つ目のexecutionMode schemaを更新</strong><span>@@ -228,11 +228,12 @@</span></div><div class="code-wrap"><pre><span class="del">-                "enum": ["normal", "user-input"],</span><span class="add">+                "enum": ["normal", "user-input", "user-replay"],</span><span class="del">-                  "execute with user input node(required to implement InputInterface in python engine.)"</span><span class="add">+                  "execute with user input node(required to implement InputInterface in python engine.)",</span><span class="add">+                  "execute with last user input data"</span></pre></div><div class="caption cu4"><div class="caption-unit">CU-4 · VSCode UI / TypeScript</div><div><h3>最初のdebug configurationでreplayを許可</h3><p>executionModeのenumとenumDescriptionsを同じ順序で拡張します。</p></div><span class="risk">LOW</span></div></article><article class="location"><div class="location-head"><strong>02 · 2つ目のexecutionMode schemaを同期</strong><span>@@ -283,11 +284,12 @@</span></div><div class="code-wrap"><pre><span class="del">-                "enum": ["normal", "user-input"],</span><span class="add">+                "enum": ["normal", "user-input", "user-replay"],</span><span class="del">-                  "execute with user input node(required to implement InputInterface in python engine.)"</span><span class="add">+                  "execute with user input node(required to implement InputInterface in python engine.)",</span><span class="add">+                  "execute with last user input data"</span></pre></div><div class="caption cu4"><div class="caption-unit">CU-4 · VSCode UI / TypeScript</div><div><h3>重複する設定定義にも同じ選択肢を追加</h3><p>片方だけが異なる状態を避けるため、2つ目のconfiguration schemaも同内容に揃えます。</p></div><span class="risk">LOW</span></div></article></div></section>
+
+        <section class="panel p6"><header class="panel-head"><div><h2>vscode-extension/emdb/src/provider/emdbAdapter.ts</h2><p>起動失敗の通知とreplay時のtimeline表示</p></div><span class="panel-stats">2 hunks · +2 / −1 · LOW</span></header><div class="locations"><article class="location"><div class="location-head"><strong>01 · engine start失敗を通知</strong><span>@@ -91,6 +91,7 @@</span></div><div class="code-wrap"><pre>     if (typeof startParams === 'string') {<span class="add">+      vscode.window.showErrorMessage(`engine start failed: ${startParams}`);</span>       this.sendErrorResponse(response, 1003, `engine start failed: ${startParams}`);</pre></div><div class="caption cu4"><div class="caption-unit">CU-4 · VSCode UI / TypeScript</div><div><h3>起動失敗をVSCode通知でも可視化</h3><p>DAP error responseに加え、ユーザーが直接確認できるerror messageを表示します。</p></div><span class="risk">LOW</span></div></article><article class="location"><div class="location-head"><strong>02 · replayでもtimelineを取得</strong><span>@@ -524,7 +525,7 @@</span></div><div class="code-wrap"><pre><span class="del">-      if (this._executionMode === "user-input"){</span><span class="add">+      if (this._executionMode === "user-input" || this._executionMode === "user-replay") {</span></pre></div><div class="caption cu4"><div class="caption-unit">CU-4 · VSCode UI / TypeScript</div><div><h3>再生入力をtimeline表示の対象へ含める</h3><p>user-replayも入力履歴を持つため、user-inputと同じwindow取得経路を使います。</p></div><span class="risk">LOW</span></div></article></div></section>
+
+        <section class="panel p7"><header class="panel-head"><div><h2>vscode-extension/emdb/src/provider/emdbConfigurationProvider.ts</h2><p>起動モード選択UIへUser Replay Modeを追加</p></div><span class="panel-stats">1 hunk · +2 / −1 · LOW</span></header><div class="locations"><article class="location"><div class="location-head"><strong>01 · QuickPickへreplay optionを追加</strong><span>@@ -27,7 +27,8 @@</span></div><div class="code-wrap"><pre>                     { label: "Normal", description: "通常実行", mode: "normal"},<span class="del">-                    { label: "User Input Mode", ..., mode: "user-input"}</span><span class="add">+                    { label: "User Input Mode", ..., mode: "user-input"},</span><span class="add">+                    { label: "User Replay Mode", description: "最後に与えた時変値を使って実行", mode: "user-replay"}</span></pre></div><div class="caption cu4"><div class="caption-unit">CU-4 · VSCode UI / TypeScript</div><div><h3>設定がない起動時にreplayを選べるようにする</h3><p>QuickPickの表示名、説明、protocol値を一組として追加します。</p></div><span class="risk">LOW</span></div></article></div></section>
+
+        <section class="panel p8"><header class="panel-head"><div><h2>vscode-extension/emdb/src/provider/engine.ts</h2><p>commandFailを文字列としてadapterへ返す</p></div><span class="panel-stats">2 hunks · +9 / −7 · LOW</span></header><div class="locations"><article class="location"><div class="location-head"><strong>01 · startRequestの戻り値と失敗分岐を拡張</strong><span>@@ -68,8 +68,15 @@</span></div><div class="code-wrap"><pre><span class="del">-    async startRequest(...): Promise&lt;EmdbResponseStartParam&gt; {</span><span class="add">+    async startRequest(...): Promise&lt;string | EmdbResponseStartParam&gt; {</span><span class="add">+        if (res.kind !== 'start') {</span><span class="add">+            if (res.kind === 'commandFail') {</span><span class="add">+                return res.params.message;</span><span class="add">+            }</span><span class="add">+            engineErr(`start request failed: ${JSON.stringify(res)}`);</span><span class="add">+        }</span></pre></div><div class="caption cu4"><div class="caption-unit">CU-4 · VSCode UI / TypeScript</div><div><h3>PythonのcommandFailを起動失敗として伝播</h3><p>成功時の構造体と失敗時の文字列をunionで表し、adapter側の既存分岐へ渡します。</p></div><span class="risk">LOW</span></div></article><article class="location"><div class="location-head"><strong>02 · response parse失敗時のfallbackを変更</strong><span>@@ -79,12 +86,7 @@</span></div><div class="code-wrap"><pre><span class="del">-            return {</span><span class="del">-                nodes: [], edges: [],</span><span class="del">-                inputNodes: [], outputNodes: []</span><span class="del">-            };</span><span class="add">+            return "Internal error in start response";</span></pre></div><div class="caption cu4"><div class="caption-unit">CU-4 · VSCode UI / TypeScript</div><div><h3>空の正常値ではなく明示的な失敗を返す</h3><p>parse errorを空グラフとして扱わず、adapterが起動失敗として表示できる文字列にします。</p></div><span class="risk">LOW</span></div></article></div></section>
+
+        <section class="panel p9"><header class="panel-head"><div><h2>vscode-extension/emdb/src/provider/engineProtocol.ts</h2><p>TypeScript protocolのExecutionMode型を更新</p></div><span class="panel-stats">1 hunk · +1 / −1 · LOW</span></header><div class="locations"><article class="location"><div class="location-head"><strong>01 · user-replay literalを追加</strong><span>@@ -98,4 +98,4 @@</span></div><div class="code-wrap"><pre><span class="del">-export type ExecutionMode = "normal" | "user-input";</span><span class="add">+export type ExecutionMode = "normal" | "user-input" | "user-replay";</span>\ No newline at end of file</pre></div><div class="caption cu4"><div class="caption-unit">CU-4 · VSCode UI / TypeScript</div><div><h3>extension内のprotocol型をPython側と同期</h3><p>request.pyおよびpackage.jsonと同じ3つの実行モードを型レベルで許可します。</p></div><span class="risk">depends on CU-3</span></div></article></div></section>
       </div>
     </section>
-
-    <section class="proposal-summary" aria-label="案Aの評価観点"><div><strong>長所</strong><p>実際のレビュー順に近く、ファイル単位で迷いにくい。コード幅も安定します。</p></div><div><strong>注意点</strong><p>同じChange Unitが複数タブへ分散するため、全体像は凡例や集約表示で補います。</p></div><div><strong>推奨規模</strong><p>2〜15ファイル程度。小〜中規模のPRで最も自然に機能します。</p></div></section>
+    <p class="note">表示内容: sample-emfrp.json / commit 3ab8547。大きなhunkは主要行を抜粋し、折りたたみ位置を明示しています。</p>
   </main>
 </body>
 </html>
